@@ -399,6 +399,20 @@ var e,a,n="function"==typeof Symbol?Symbol:{},t=n.iterator||"@@iterator",r=n.toS
 <script>
 (function() {
   var rawCode = JSON.parse(document.getElementById('app-source').textContent);
+  // Add Mall Map as a native dashboard page before the React source is compiled.
+  rawCode = rawCode
+    .replace(
+      "  { key: 'risk', label: 'مركز المخاطر', icon: 'alert' },",
+      "  { key: 'risk', label: 'مركز المخاطر', icon: 'alert' },\n  { key: 'mallmap', label: 'إدارة المساحات', icon: 'map' },"
+    )
+    .replace(
+      "    insights: <InsightsPage onOpenSupplier={openSupplier} /> ,".replace(' /> ,', ' />,'),
+      "    insights: <InsightsPage onOpenSupplier={openSupplier} />,\n    mallmap: <MallMapPage />,"
+    )
+    .replace(
+      "function DashboardShell() {",
+      "function MallMapPage() {\n  return (\n    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>\n      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>\n        <div><div style={{ color: COLORS.teal, fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>إدارة استغلال المساحات</div><h1 style={{ margin: '4px 0 0', fontSize: 24 }}>خريطة السوق المركزي</h1><p style={{ margin: '5px 0 0', color: COLORS.textMut, fontSize: 13 }}>رفوف، جندولات، ثلاجات، استاندات وطبليات عروض — مع توزيع الموردين ومعدل الدوران.</p></div>\n        <span style={{ border: '1px solid '+COLORS.border, background: COLORS.surface, color: COLORS.teal, borderRadius: 20, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>خريطة تشغيلية حيّة</span>\n      </div>\n      <div style={{ flex: 1, minHeight: 620, border: '1px solid '+COLORS.border, borderRadius: 14, overflow: 'hidden', background: '#eeebe2', boxShadow: '0 10px 28px rgba(0,0,0,.18)' }}>\n        <iframe title=\"إدارة مساحات السوق\" src=\"../mall_map-1-1.html\" allow=\"camera\" style={{ width: '100%', height: '100%', border: 0, display: 'block' }} />\n      </div>\n    </div>\n  );\n}\n\nfunction DashboardShell() {"
+    );
   var transformed = Babel.transform(rawCode, {
     presets: [['react', { runtime: 'classic' }]]
   }).code;
@@ -406,6 +420,34 @@ var e,a,n="function"==typeof Symbol?Symbol:{},t=n.iterator||"@@iterator",r=n.toS
   scriptEl.textContent = transformed;
   document.body.appendChild(scriptEl);
 })();
+</script>
+
+<!-- Mall Map integration: kept outside the compiled React source so dashboard updates stay safe. -->
+<style>
+  #mall-map-launcher{display:none!important}
+  #mall-map-launcher:hover{background:#293848;transform:translateY(-1px)}
+  #mall-map-launcher .mall-map-dot{width:9px;height:9px;border-radius:50%;background:#c9971f;box-shadow:0 0 0 4px rgba(201,151,31,.18)}
+  #mall-map-overlay{position:fixed;inset:0;z-index:10000;background:rgba(13,18,24,.72);display:none;padding:18px}
+  #mall-map-overlay.open{display:flex;flex-direction:column}
+  .mall-map-topbar{height:52px;flex:none;background:#161b22;color:#fff;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font:700 14px Tahoma,Arial,sans-serif;direction:rtl;border-bottom:2px solid #c9971f}
+  .mall-map-topbar small{color:#c7c2b5;font-weight:400;margin-right:8px}.mall-map-close{border:1px solid #66717d;background:transparent;color:#fff;border-radius:8px;padding:7px 13px;font:700 13px Tahoma,Arial,sans-serif;cursor:pointer}.mall-map-close:hover{background:#293848}
+  #mall-map-frame{width:100%;height:calc(100vh - 88px);border:0;background:#eeebe2;border-radius:0 0 12px 12px}
+  @media(max-width:600px){#mall-map-launcher{left:14px;bottom:14px;padding:11px 13px}#mall-map-overlay{padding:0}.mall-map-topbar{border-radius:0}#mall-map-frame{height:calc(100vh - 52px);border-radius:0}}
+</style>
+<button id="mall-map-launcher" type="button" aria-label="فتح إدارة المساحات"><span class="mall-map-dot"></span>إدارة مساحات السوق</button>
+<section id="mall-map-overlay" aria-hidden="true">
+  <div class="mall-map-topbar"><div>إدارة مساحات السوق <small>رفوف · جندولات · ثلاجات · طبليات</small></div><button class="mall-map-close" type="button">إغلاق ×</button></div>
+  <iframe id="mall-map-frame" title="إدارة مساحات السوق" src="../mall_map-1-1.html" allow="camera"></iframe>
+</section>
+<script>
+  (function(){
+    var button=document.getElementById('mall-map-launcher'), overlay=document.getElementById('mall-map-overlay'), close=overlay.querySelector('.mall-map-close');
+    function openMallMap(){overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');}
+    function closeMallMap(){overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');}
+    button.addEventListener('click',openMallMap); close.addEventListener('click',closeMallMap);
+    overlay.addEventListener('click',function(e){if(e.target===overlay)closeMallMap();});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMallMap();});
+  })();
 </script>
 
 </body>
