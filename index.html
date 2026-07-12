@@ -422,27 +422,363 @@ var e,a,n="function"==typeof Symbol?Symbol:{},t=n.iterator||"@@iterator",r=n.toS
 })();
 </script>
 
-<!-- Mall Map integration: kept outside the compiled React source so dashboard updates stay safe. -->
+<!-- Mall Map integration: inline (no separate HTML file needed anymore) -->
 <style>
-  #mall-map-launcher{display:none!important}
+  /* زر فتح إدارة المساحات — يظهر في الزاوية السفلية اليسرى فوق الداشبورد */
+  #mall-map-launcher{position:fixed;left:18px;bottom:18px;z-index:9000;display:inline-flex;align-items:center;gap:8px;background:#161b22;color:#fff;border:1px solid #2a3340;border-radius:999px;padding:12px 16px;font:700 13px Tahoma,Arial,sans-serif;direction:rtl;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.35);transition:transform .15s ease, background .15s ease}
   #mall-map-launcher:hover{background:#293848;transform:translateY(-1px)}
   #mall-map-launcher .mall-map-dot{width:9px;height:9px;border-radius:50%;background:#c9971f;box-shadow:0 0 0 4px rgba(201,151,31,.18)}
-  #mall-map-overlay{position:fixed;inset:0;z-index:10000;background:rgba(13,18,24,.72);display:none;padding:18px}
+  #mall-map-overlay{position:fixed;inset:0;z-index:10000;background:rgba(13,18,24,.78);display:none;padding:18px}
   #mall-map-overlay.open{display:flex;flex-direction:column}
   .mall-map-topbar{height:52px;flex:none;background:#161b22;color:#fff;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font:700 14px Tahoma,Arial,sans-serif;direction:rtl;border-bottom:2px solid #c9971f}
   .mall-map-topbar small{color:#c7c2b5;font-weight:400;margin-right:8px}.mall-map-close{border:1px solid #66717d;background:transparent;color:#fff;border-radius:8px;padding:7px 13px;font:700 13px Tahoma,Arial,sans-serif;cursor:pointer}.mall-map-close:hover{background:#293848}
-  #mall-map-frame{width:100%;height:calc(100vh - 88px);border:0;background:#eeebe2;border-radius:0 0 12px 12px}
-  @media(max-width:600px){#mall-map-launcher{left:14px;bottom:14px;padding:11px 13px}#mall-map-overlay{padding:0}.mall-map-topbar{border-radius:0}#mall-map-frame{height:calc(100vh - 52px);border-radius:0}}
+  #mall-map-content{width:100%;flex:1;background:#eeebe2;border-radius:0 0 12px 12px;overflow:auto}
+  @media(max-width:600px){#mall-map-launcher{left:14px;bottom:14px;padding:11px 13px}#mall-map-overlay{padding:0}.mall-map-topbar{border-radius:0}#mall-map-content{border-radius:0}}
 </style>
 <button id="mall-map-launcher" type="button" aria-label="فتح إدارة المساحات"><span class="mall-map-dot"></span>إدارة مساحات السوق</button>
 <section id="mall-map-overlay" aria-hidden="true">
   <div class="mall-map-topbar"><div>إدارة مساحات السوق <small>رفوف · جندولات · ثلاجات · طبليات</small></div><button class="mall-map-close" type="button">إغلاق ×</button></div>
-  <iframe id="mall-map-frame" title="إدارة مساحات السوق" src="../mall_map-1-1.html" allow="camera"></iframe>
+  <div id="mall-map-content" role="region" aria-label="إدارة مساحات السوق">
+
+<header>
+  <div class="header-row">
+    <div>
+      <div class="brand-eyebrow">إدارة استغلال المساحات</div>
+      <h1>مخطط مساحات المركز التجاري</h1>
+      <div class="subtitle">عرض حي لتوزيع الأرفف والتلاجات والاستاندات والطبليات على الموردين</div>
+    </div>
+    <div class="toggles-col">
+      <div class="view-toggle" id="display-toggle">
+        <button id="btn-cards" class="active" onclick="setDisplay('cards')">بطاقات القواطع</button>
+        <button id="btn-treemap" onclick="setDisplay('treemap')">خريطة حرارية</button>
+        <button id="btn-table" onclick="setDisplay('table')">جدول وتصدير</button>
+        <button id="btn-vendors" onclick="setDisplay('vendors')">تقرير الموردين</button>
+      </div>
+      <div class="view-toggle small" id="color-toggle">
+        <button id="btn-cat" class="active" onclick="setView('cat')">حسب التصنيف</button>
+        <button id="btn-perf" onclick="setView('perf')">حسب الأداء</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="action-bar">
+  <span class="mode-banner" id="mode-banner">جارِ التحميل...</span>
+  <div class="actions">
+    <button class="ghost-btn gold" onclick="openScanModal()">📷 مسح QR / إدارة</button>
+    <button class="ghost-btn" onclick="openPrintLabels()">🖨️ طباعة أكواد QR</button>
+    <button class="ghost-btn" onclick="openSettingsModal()">⚙️ الإعدادات</button>
+  </div>
+</div>
+
+<div class="kpi-bar" id="kpi-bar"></div>
+<div class="equip-bar" id="equip-bar"></div>
+
+<div class="layout">
+  <aside>
+    <div class="filter-group">
+      <h3>التصنيف</h3>
+      <select id="f-category"><option value="">كل التصنيفات</option></select>
+    </div>
+    <div class="filter-group">
+      <h3>المورد</h3>
+      <select id="f-vendor"><option value="">كل الموردين</option></select>
+    </div>
+    <div class="filter-group">
+      <h3>نوع المعدة</h3>
+      <div id="f-type"></div>
+    </div>
+    <div class="filter-group">
+      <h3>حالة الأداء</h3>
+      <select id="f-status">
+        <option value="">الكل</option>
+        <option value="good">جيد</option>
+        <option value="mid">متوسط</option>
+        <option value="weak">ضعيف</option>
+      </select>
+    </div>
+    <button class="reset-btn" onclick="resetFilters()">إعادة تعيين الفلاتر</button>
+
+    <div class="filter-group" style="margin-top:28px;">
+      <h3>دليل التصنيفات</h3>
+      <div id="legend"></div>
+    </div>
+  </aside>
+
+  <section class="floor" id="floor"></section>
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeDrawer()">
+  <div class="drawer" id="drawer"></div>
+</div>
+
+<!-- نافذة الإعدادات -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-box">
+    <div class="modal-head"><h3>إعدادات الاتصال بجوجل شيت</h3><button class="close-btn" onclick="closeModal('settings-modal')">✕</button></div>
+    <div class="modal-body">
+      <label>رابط Web App الخاص بـ Google Apps Script</label>
+      <input type="url" id="backend-url-input" placeholder="https://script.google.com/macros/s/XXXXX/exec">
+      <p class="hint-text">انسخ هذا الرابط بعد عمل Deploy لملف Code.gs كـ Web App (Execute as: Me — Who has access: Anyone). بمجرد حفظ الرابط، هتتحول اللوحة لوضع البيانات الحية وتقدر تعدّل من خلالها.</p>
+      <label>رمز التعديل (اختياري)</label>
+      <input type="text" id="edit-pin-input" placeholder="اتركه فاضي لتعطيل الحماية">
+      <p class="hint-text">لو حطيت رمز هنا، أي شخص هيحاول يدخل وضع "تعديل" هيتطلب منه إدخال نفس الرمز. تنبيه مهم: دي حماية من طرف المتصفح فقط، مش حماية حقيقية على مستوى الخادم — أي حد يقدر يفتح كود الصفحة (View Source) ويشوف الرمز بسهولة. لو البيانات حساسة فعلاً، لازم يكون فيه تحقق فعلي داخل Code.gs نفسه (مثلاً مقارنة edit_token اللي بيوصله مع القيمة المحفوظة عندك في Apps Script) — الرمز ده بيتبعت مع كل طلب حفظ تحت اسم edit_token عشان تقدر تضيف التحقق ده في الباك إند وقتما تحب.</p>
+      <button class="primary-btn" onclick="saveBackendUrl()">حفظ والاتصال</button>
+    </div>
+  </div>
+</div>
+
+<!-- نافذة مسح QR / الإدارة -->
+<div class="modal-overlay" id="scan-modal">
+  <div class="modal-box">
+    <div class="modal-head"><h3>مسح كود الوحدة</h3><button class="close-btn" onclick="closeScanModal()">✕</button></div>
+    <div class="modal-body">
+      <video id="qr-video" autoplay playsinline muted></video>
+      <canvas id="qr-canvas" style="display:none;"></canvas>
+      <div class="qr-status" id="qr-status">جارِ تشغيل الكاميرا...</div>
+      <div class="qr-manual-row">
+        <input type="text" id="manual-code-input" placeholder="أو اكتب الكود يدويًا (مثال: A-F01-1)">
+        <button class="primary-btn" onclick="manualCodeLookup()">بحث</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- صفحة الطباعة (تظهر فقط عند الطباعة) -->
+<div class="print-page" id="print-page"></div>
+
+
+
+
+</div>
 </section>
+<style>
+/* ==== Mall Map scoped styles (inlined) ==== */
+
+#mall-map-content {
+  --mm-ink:#161B22;
+  --mm-ink-soft:#242B36;
+  --mm-paper:#EEEBE2;
+  --mm-paper-line:#CFC9BA;
+  --mm-card:#FBFAF6;
+  --mm-gold:#C9971F;
+  --mm-gold-deep:#9C7414;
+  --mm-text:#1D2128;
+  --mm-text-dim:#6B6659;
+  --mm-border:#D8D2C2;
+  --mm-good:#3E8E5A;
+  --mm-mid:#D9A63E;
+  --mm-weak:#C0453A;
+  --mm-vacant:#B9B2A0;
+  --mm-radius:6px;
+  --mm-cat-choc:#7B4B2A;
+  --mm-cat-dairy:#3E7CB1;
+  --mm-cat-bev:#2F9E6E;
+  --mm-cat-snack:#D98E3B;
+  --mm-cat-clean:#6B5B95;
+  --mm-cat-frozen:#4FA8C6;
+  --mm-cat-bakery:#B4585F;
+  --mm-cat-care:#82962A;
+  --mm-cat-promo:#B8860B;
+}
+#mall-map-content * {box-sizing:border-box;}
+#mall-map-content html,body {margin:0;padding:0;background:var(--mm-ink);}
+#mall-map-content body {font-family:'Tajawal',sans-serif;color:var(--mm-text);min-height:100vh;}
+#mall-map-content .mono {font-family:'IBM Plex Mono',monospace;}
+#mall-map-content ::selection {background:var(--mm-gold);color:#fff;}
+
+#mall-map-content header {background:var(--mm-ink);color:#F2EFE6;padding:22px 32px 20px;border-bottom:3px solid var(--mm-gold);}
+#mall-map-content .header-row {display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;}
+#mall-map-content .brand-eyebrow {font-size:12px;letter-spacing:2px;color:var(--mm-gold);font-weight:700;margin-bottom:4px;}
+#mall-map-content h1 {font-size:26px;margin:0;font-weight:800;color:#fff;}
+#mall-map-content .subtitle {font-size:13px;color:#B7B0A0;margin-top:4px;}
+#mall-map-content .view-toggle {display:flex;background:var(--mm-ink-soft);border-radius:999px;padding:4px;border:1px solid #363E4B;}
+#mall-map-content .view-toggle button {border:none;background:transparent;color:#B7B0A0;padding:9px 18px;border-radius:999px;font-family:'Tajawal',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:.2s;}
+#mall-map-content .view-toggle button.active {background:var(--mm-gold);color:#1D1503;}
+#mall-map-content .view-toggle.small button {padding:6px 14px;font-size:12px;}
+#mall-map-content .toggles-col {display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+
+#mall-map-content .treemap-wrap {padding:24px 28px;}
+#mall-map-content .treemap-container {position:relative;width:100%;padding-bottom:52%;background:var(--mm-paper);border:1px solid var(--mm-border);border-radius:var(--mm-radius);overflow:hidden;}
+#mall-map-content .treemap-box {position:absolute;box-sizing:border-box;border:1.5px solid var(--mm-paper);cursor:pointer;transition:filter .15s, box-shadow .15s;}
+#mall-map-content .treemap-box:hover {filter:brightness(1.12);box-shadow:inset 0 0 0 2px rgba(255,255,255,.6);z-index:5;}
+#mall-map-content .treemap-box.dimmed {opacity:.15;pointer-events:none;}
+#mall-map-content .treemap-box.vacant-heavy {background-image:repeating-linear-gradient(45deg, rgba(0,0,0,.12) 0, rgba(0,0,0,.12) 6px, transparent 6px, transparent 12px);}
+#mall-map-content .treemap-label {position:absolute;inset:0;padding:6px 8px;color:#fff;font-size:11.5px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.65);display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;}
+#mall-map-content .treemap-label .code {font-family:'IBM Plex Mono',monospace;font-size:12px;}
+#mall-map-content .treemap-label .meta {font-size:10px;font-weight:500;opacity:.92;}
+
+#mall-map-content .table-toolbar {display:flex;justify-content:space-between;align-items:center;padding:20px 28px 0;flex-wrap:wrap;gap:10px;}
+#mall-map-content .table-toolbar .hint {font-size:12.5px;color:var(--mm-text-dim);}
+#mall-map-content .export-btn {background:var(--mm-gold-deep);color:#fff;border:none;padding:9px 18px;border-radius:var(--mm-radius);font-family:'Tajawal',sans-serif;font-weight:700;font-size:13px;cursor:pointer;}
+#mall-map-content .export-btn:hover {background:var(--mm-gold);}
+#mall-map-content .table-wrap {padding:14px 28px 28px;overflow-x:auto;}
+#mall-map-content table.data-table {width:100%;border-collapse:collapse;background:var(--mm-card);border:1px solid var(--mm-border);border-radius:var(--mm-radius);overflow:hidden;font-size:13px;}
+#mall-map-content .data-table th, .data-table td {padding:10px 14px;text-align:right;border-bottom:1px solid var(--mm-border);white-space:nowrap;}
+#mall-map-content .data-table th {background:#F4F1E9;font-weight:700;color:var(--mm-text-dim);cursor:pointer;user-select:none;font-size:12px;}
+#mall-map-content .data-table th .arrow {opacity:.5;font-size:10px;margin-left:4px;}
+#mall-map-content .data-table th.sorted {color:var(--mm-ink);}
+#mall-map-content .data-table th.sorted .arrow {opacity:1;color:var(--mm-gold-deep);}
+#mall-map-content .data-table tbody tr {cursor:pointer;}
+#mall-map-content .data-table tbody tr:hover td {background:#F8F6EF;}
+#mall-map-content .data-table tbody tr.filtered-out {display:none;}
+
+#mall-map-content .action-bar {display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 28px;background:var(--mm-ink-soft);flex-wrap:wrap;}
+#mall-map-content .vendors-toolbar {display:flex;justify-content:space-between;align-items:center;padding:20px 28px 0;flex-wrap:wrap;gap:12px;}
+#mall-map-content .metric-toggle {display:flex;background:var(--mm-card);border:1px solid var(--mm-border);border-radius:999px;padding:3px;}
+#mall-map-content .metric-toggle button {border:none;background:transparent;color:var(--mm-text-dim);padding:7px 16px;border-radius:999px;font-family:'Tajawal',sans-serif;font-weight:700;font-size:12.5px;cursor:pointer;}
+#mall-map-content .metric-toggle button.active {background:var(--mm-gold-deep);color:#fff;}
+#mall-map-content .data-table tr.vacant-row td {color:var(--mm-text-dim);font-style:italic;background:repeating-linear-gradient(45deg, #F4F1E9, #F4F1E9 8px, #EEEBE2 8px, #EEEBE2 16px);}
+#mall-map-content .action-bar .mode-banner {font-size:12.5px;color:#D9D2C2;}
+#mall-map-content .action-bar .actions {display:flex;gap:8px;flex-wrap:wrap;}
+#mall-map-content .ghost-btn {background:transparent;border:1px solid #454E5D;color:#F2EFE6;padding:8px 16px;border-radius:999px;font-family:'Tajawal',sans-serif;font-weight:700;font-size:12.5px;cursor:pointer;}
+#mall-map-content .ghost-btn:hover {background:#2E3644;}
+#mall-map-content .ghost-btn.gold {border-color:var(--mm-gold);color:var(--mm-gold);}
+#mall-map-content .ghost-btn.gold:hover {background:rgba(201,151,31,.12);}
+
+#mall-map-content .modal-overlay {position:fixed;inset:0;background:rgba(20,20,15,.6);display:none;align-items:center;justify-content:center;z-index:100;padding:20px;}
+#mall-map-content .modal-overlay.open {display:flex;}
+#mall-map-content .modal-box {background:var(--mm-card);border-radius:8px;width:460px;max-width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.35);}
+#mall-map-content .modal-head {padding:16px 20px;border-bottom:1px solid var(--mm-border);display:flex;justify-content:space-between;align-items:center;}
+#mall-map-content .modal-head h3 {margin:0;font-size:16px;}
+#mall-map-content .modal-body {padding:18px 20px;}
+#mall-map-content .modal-body label {display:block;font-size:12.5px;color:var(--mm-text-dim);margin-bottom:6px;font-weight:700;}
+#mall-map-content .modal-body input[type=text], .modal-body input[type=url] {width:100%;padding:10px;border:1px solid var(--mm-border);border-radius:var(--mm-radius);font-family:'IBM Plex Mono',monospace;font-size:12.5px;margin-bottom:14px;}
+#mall-map-content .primary-btn {background:var(--mm-gold-deep);color:#fff;border:none;padding:10px 20px;border-radius:var(--mm-radius);font-family:'Tajawal',sans-serif;font-weight:700;font-size:13.5px;cursor:pointer;}
+#mall-map-content .primary-btn:hover {background:var(--mm-gold);}
+#mall-map-content .hint-text {font-size:11.5px;color:var(--mm-text-dim);line-height:1.6;}
+
+#mall-map-content#qr-video {width:100%;border-radius:var(--mm-radius);background:#000;}
+#mall-map-content .qr-manual-row {display:flex;gap:8px;margin-top:12px;}
+#mall-map-content .qr-manual-row input {flex:1;padding:9px 10px;border:1px solid var(--mm-border);border-radius:var(--mm-radius);font-family:'IBM Plex Mono',monospace;}
+#mall-map-content .qr-status {margin-top:10px;font-size:12.5px;color:var(--mm-text-dim);text-align:center;}
+
+#mall-map-content .edit-toggle-btn {background:var(--mm-gold);color:#1D1503;border:none;padding:6px 14px;border-radius:999px;font-family:'Tajawal',sans-serif;font-weight:700;font-size:12px;cursor:pointer;}
+#mall-map-content .edit-seg-row {display:grid;grid-template-columns:1fr 60px 60px auto;gap:6px;align-items:center;margin-bottom:8px;}
+#mall-map-content .edit-seg-row input {padding:7px 8px;border:1px solid var(--mm-border);border-radius:5px;font-family:'Tajawal',sans-serif;font-size:12.5px;}
+#mall-map-content .edit-seg-row input.pct-in, .edit-seg-row input.turn-in {font-family:'IBM Plex Mono',monospace;text-align:center;}
+#mall-map-content .del-seg-btn {background:var(--mm-weak);color:#fff;border:none;border-radius:5px;width:28px;height:28px;cursor:pointer;font-size:14px;line-height:1;}
+#mall-map-content .add-seg-btn {width:100%;padding:7px;background:transparent;border:1px dashed var(--mm-border);border-radius:5px;color:var(--mm-text-dim);font-family:'Tajawal',sans-serif;font-size:12px;cursor:pointer;margin-top:4px;}
+#mall-map-content .add-seg-btn:hover {background:#F4F1E9;}
+#mall-map-content .save-edit-btn {width:100%;padding:12px;background:var(--mm-good);color:#fff;border:none;border-radius:var(--mm-radius);font-family:'Tajawal',sans-serif;font-weight:700;font-size:14px;cursor:pointer;margin-top:16px;}
+#mall-map-content .save-edit-btn:disabled {background:var(--mm-vacant);cursor:wait;}
+#mall-map-content .group-invalid {outline:2px solid var(--mm-weak);outline-offset:-2px;background:rgba(192,69,58,.06);}
+#mall-map-content .group-pct-hint {font-size:10.5px;padding:4px 12px 0;color:var(--mm-text-dim);}
+#mall-map-content .group-pct-hint.bad {color:var(--mm-weak);font-weight:700;}
+
+#mall-map-content .print-page {display:none;}
+@media print{
+  body *{visibility:hidden;}
+  .print-page, .print-page *{visibility:visible;}
+  .print-page{display:block;position:absolute;top:0;left:0;width:100%;}
+}
+#mall-map-content .print-label {display:inline-block;width:180px;border:1px dashed #999;border-radius:6px;padding:10px;text-align:center;margin:6px;page-break-inside:avoid;}
+#mall-map-content .print-label .code {font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:14px;margin-top:6px;}
+#mall-map-content .print-label .sub {font-size:10px;color:#666;}
+
+#mall-map-content .kpi-bar {display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--mm-border);border-bottom:1px solid var(--mm-border);}
+#mall-map-content .kpi {background:var(--mm-card);padding:16px 20px;}
+#mall-map-content .kpi-label {font-size:12px;color:var(--mm-text-dim);font-weight:500;}
+#mall-map-content .kpi-value {font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:700;color:var(--mm-ink);margin-top:4px;}
+#mall-map-content .kpi-value small {font-size:13px;font-weight:500;color:var(--mm-text-dim);margin-right:4px;}
+#mall-map-content .kpi.accent .kpi-value {color:var(--mm-gold-deep);}
+
+#mall-map-content .equip-bar {display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--mm-border);border-bottom:1px solid var(--mm-border);}
+#mall-map-content .equip-card {background:#F4F1E9;padding:14px 20px;}
+#mall-map-content .equip-card .title {font-size:13px;font-weight:700;color:var(--mm-ink);display:flex;align-items:center;gap:8px;}
+#mall-map-content .equip-card .title .n {font-family:'IBM Plex Mono',monospace;font-size:19px;color:var(--mm-gold-deep);}
+#mall-map-content .equip-card .desc {font-size:11.5px;color:var(--mm-text-dim);margin-top:4px;line-height:1.6;}
+
+#mall-map-content .layout {display:grid;grid-template-columns:260px 1fr;background:var(--mm-paper);min-height:70vh;}
+#mall-map-content aside {background:var(--mm-card);border-left:1px solid var(--mm-border);padding:20px 18px;}
+#mall-map-content .filter-group {margin-bottom:22px;}
+#mall-map-content .filter-group h3 {font-size:12.5px;text-transform:uppercase;letter-spacing:1px;color:var(--mm-text-dim);margin:0 0 10px;font-weight:700;}
+#mall-map-content select {width:100%;padding:9px 10px;border:1px solid var(--mm-border);border-radius:var(--mm-radius);font-family:'Tajawal',sans-serif;font-size:13.5px;background:#fff;color:var(--mm-text);}
+#mall-map-content .chip {display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13.5px;cursor:pointer;user-select:none;}
+#mall-map-content .chip input {accent-color:var(--mm-gold-deep);}
+#mall-map-content .legend-item {display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;color:var(--mm-text-dim);}
+#mall-map-content .legend-dot {width:10px;height:10px;border-radius:2px;flex:none;}
+#mall-map-content .reset-btn {width:100%;padding:9px;margin-top:6px;background:var(--mm-ink);color:#F2EFE6;border:none;border-radius:var(--mm-radius);font-family:'Tajawal',sans-serif;font-weight:700;font-size:13px;cursor:pointer;}
+#mall-map-content .reset-btn:hover {background:var(--mm-ink-soft);}
+
+#mall-map-content .floor {padding:24px 28px;}
+#mall-map-content .zone {margin-bottom:30px;}
+#mall-map-content .zone-title {font-size:13px;font-weight:700;color:var(--mm-text-dim);letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:10px;}
+#mall-map-content .zone-title::after {content:"";flex:1;height:1px;background:var(--mm-paper-line);}
+#mall-map-content .zone-grid {display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
+
+#mall-map-content .unit {width:172px;background:var(--mm-card);border:1px solid var(--mm-border);border-radius:var(--mm-radius);box-shadow:0 1px 0 var(--mm-border), 0 3px 6px rgba(0,0,0,.05);cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, opacity .2s;overflow:hidden;}
+#mall-map-content .unit:hover {transform:translateY(-3px);box-shadow:0 6px 14px rgba(0,0,0,.12);}
+#mall-map-content .unit.dimmed {opacity:.22;pointer-events:none;}
+#mall-map-content .unit-tag {display:flex;justify-content:space-between;align-items:center;padding:7px 9px 5px;font-size:11px;color:var(--mm-text-dim);}
+#mall-map-content .unit-tag .code {font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--mm-ink);}
+
+#mall-map-content .seg-stack {display:flex;flex-direction:column;height:56px;border-top:1px solid var(--mm-border);}
+#mall-map-content .seg {position:relative;transition:filter .15s;}
+#mall-map-content .seg:hover {filter:brightness(1.08);}
+
+#mall-map-content .comp-strip {border-top:1px dashed var(--mm-border);}
+#mall-map-content .comp-label {font-size:9.5px;color:var(--mm-text-dim);padding:4px 9px 2px;display:flex;justify-content:space-between;background:#F4F1E9;}
+#mall-map-content .comp-stack {display:flex;flex-direction:row;height:22px;}
+
+#mall-map-content .fridge-doors {display:flex;border-top:1px solid var(--mm-border);}
+#mall-map-content .fridge-door {flex:1;display:flex;flex-direction:column;height:56px;}
+#mall-map-content .fridge-door + .fridge-door {border-right:1px solid var(--mm-border);}
+#mall-map-content .fridge-shelf {flex:1;display:flex;}
+#mall-map-content .fridge-shelf + .fridge-shelf {border-top:1px solid var(--mm-border);}
+#mall-map-content .fridge-basin {border-top:1px dashed var(--mm-border);}
+#mall-map-content .cabinet-unit {border-top:2px solid var(--mm-border);}
+#mall-map-content .cabinet-unit:first-child {border-top:none;}
+#mall-map-content .cabinet-tag {font-size:9.5px;color:var(--mm-text-dim);padding:5px 9px 0;font-family:'IBM Plex Mono',monospace;font-weight:600;}
+
+#mall-map-content .unit-foot {display:flex;justify-content:space-between;padding:6px 9px;font-size:10.5px;color:var(--mm-text-dim);border-top:1px dashed var(--mm-border);background:#F4F1E9;}
+#mall-map-content .unit-foot .cat-name {font-weight:700;color:var(--mm-text);}
+
+#mall-map-content .overlay {position:fixed;inset:0;background:rgba(20,20,15,.5);display:none;align-items:stretch;justify-content:flex-end;z-index:50;}
+#mall-map-content .overlay.open {display:flex;}
+#mall-map-content .drawer {width:420px;max-width:92vw;background:var(--mm-card);height:100%;overflow-y:auto;box-shadow:-8px 0 24px rgba(0,0,0,.25);border-left:3px solid var(--mm-gold);animation:slideIn .18s ease;}
+@keyframes slideIn{from{transform:translateX(30px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+#mall-map-content .drawer-head {padding:20px 22px 16px;border-bottom:1px solid var(--mm-border);display:flex;justify-content:space-between;align-items:flex-start;}
+#mall-map-content .drawer-head .code {font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--mm-text-dim);}
+#mall-map-content .drawer-head h2 {margin:4px 0 0;font-size:20px;}
+#mall-map-content .close-btn {background:none;border:none;font-size:20px;cursor:pointer;color:var(--mm-text-dim);line-height:1;}
+#mall-map-content .drawer-body {padding:18px 22px;}
+#mall-map-content .stat-row {display:flex;gap:10px;margin-bottom:18px;}
+#mall-map-content .stat-box {flex:1;background:var(--mm-paper);border-radius:var(--mm-radius);padding:10px 12px;text-align:center;}
+#mall-map-content .stat-box .v {font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:17px;}
+#mall-map-content .stat-box .l {font-size:11px;color:var(--mm-text-dim);margin-top:2px;}
+#mall-map-content .comp-block {margin-bottom:20px;border:1px solid var(--mm-border);border-radius:var(--mm-radius);overflow:hidden;}
+#mall-map-content .comp-block-head {background:#F4F1E9;padding:8px 12px;font-size:12.5px;font-weight:700;display:flex;justify-content:space-between;color:var(--mm-ink);}
+#mall-map-content .comp-block-body {padding:12px;}
+#mall-map-content .vendor-row {margin-bottom:12px;}
+#mall-map-content .vendor-row:last-child {margin-bottom:0;}
+#mall-map-content .vendor-row .top-line {display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;}
+#mall-map-content .vendor-row .name {font-weight:700;}
+#mall-map-content .bar-track {height:9px;background:var(--mm-paper);border-radius:5px;overflow:hidden;}
+#mall-map-content .bar-fill {height:100%;border-radius:5px;}
+#mall-map-content .vendor-meta {display:flex;justify-content:space-between;font-size:11px;color:var(--mm-text-dim);margin-top:4px;}
+#mall-map-content .status-badge {display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#fff;}
+#mall-map-content .cabinet-block {margin-bottom:16px;border:1px solid var(--mm-border);border-radius:var(--mm-radius);overflow:hidden;}
+#mall-map-content .cabinet-head {background:var(--mm-ink);color:#F2EFE6;padding:8px 12px;font-size:12.5px;font-weight:700;display:flex;justify-content:space-between;}
+#mall-map-content footer.note {padding:14px 22px 26px;font-size:11.5px;color:var(--mm-text-dim);line-height:1.7;border-top:1px dashed var(--mm-border);margin-top:6px;}
+
+@media (max-width:820px){
+  .layout{grid-template-columns:1fr;}
+  aside{border-left:none;border-bottom:1px solid var(--mm-border);}
+  .kpi-bar{grid-template-columns:repeat(2,1fr);}
+  .equip-bar{grid-template-columns:repeat(2,1fr);}
+}
+
+</style>
 <script>
   (function(){
     var button=document.getElementById('mall-map-launcher'), overlay=document.getElementById('mall-map-overlay'), close=overlay.querySelector('.mall-map-close');
-    function openMallMap(){overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');}
+    function openMallMap(){
+      overlay.classList.add('open');
+      overlay.setAttribute('aria-hidden','false');
+      // أول مرة فتح — نشغّل init بتاع المول ماب (بدون ما نحمّل بيانات حتى يفتح المستخدم)
+      if(typeof window.__initMallMap === 'function'){ try{ window.__initMallMap(); }catch(e){console.error(e);} }
+    }
     function closeMallMap(){overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');}
     button.addEventListener('click',openMallMap); close.addEventListener('click',closeMallMap);
     overlay.addEventListener('click',function(e){if(e.target===overlay)closeMallMap();});
@@ -450,5 +786,1222 @@ var e,a,n="function"==typeof Symbol?Symbol:{},t=n.iterator||"@@iterator",r=n.toS
   })();
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+/* ==== Mall Map inline scripts (inlined) ==== */
+// ملاحظة: ميزتا "مسح QR بالكاميرا" و"طباعة أكواد QR" تحتاجان اتصال إنترنت
+// لتحميل مكتبتي jsQR وqrcode-generator أعلاه (مكتبات خارجية صغيرة عبر CDN).
+// باقي اللوحة (البطاقات/الخريطة الحرارية/الجدول) يعمل بدون إنترنت بشكل كامل.
+const CATS = {
+  choc:{name:"شيكولاتة", color:"var(--cat-choc)"},
+  dairy:{name:"ألبان", color:"var(--cat-dairy)"},
+  bev:{name:"مشروبات", color:"var(--cat-bev)"},
+  snack:{name:"وجبات خفيفة", color:"var(--cat-snack)"},
+  clean:{name:"منظفات", color:"var(--cat-clean)"},
+  frozen:{name:"مجمدات", color:"var(--cat-frozen)"},
+  bakery:{name:"مخبوزات", color:"var(--cat-bakery)"},
+  care:{name:"عناية شخصية", color:"var(--cat-care)"},
+  promo:{name:"عروض موسمية", color:"var(--cat-promo)"},
+};
+const TYPES = {rack:{name:"رف",icon:"▤"}, fridge:{name:"تلاجة",icon:"❄"}, stand:{name:"استاند",icon:"▲"}, pallet:{name:"طبلية عروض",icon:"▦"}};
+const ROLE_LABEL = {
+  partition:"القواطع الرئيسية", front_gondola:"جندول أمامي", back_gondola:"جندول خلفي",
+  door_left:"الباب الأيسر", door_right:"الباب الأيمن", basin:"الحوض السفلي",
+  pallet:"سطح الطبلية", stand:"الاستاند"
+};
+const ROLE_ICON = {
+  partition:"▤", front_gondola:"◧", back_gondola:"◨",
+  door_left:"▯", door_right:"▯", basin:"▬", pallet:"▦", stand:"▲"
+};
+
+function seg(vendor, pct, turnover, vacant, salesQty, salesValue, purchasesValue, turnoverValue){
+  var t = turnover||0;
+  return {
+    vendor:vendor, pct:pct, turnover:t, vacant: vacant===true,
+    salesQty: salesQty!==undefined ? salesQty : Math.round(t*118),
+    salesValue: salesValue!==undefined ? salesValue : +(t*312).toFixed(1),
+    purchasesValue: purchasesValue!==undefined ? purchasesValue : +((salesValue!==undefined?salesValue:t*312)*0.73).toFixed(1),
+    turnoverValue: turnoverValue!==undefined ? turnoverValue : +(t*0.91).toFixed(2)
+  };
+}
+function comp(role, lengthM, segs){return {role:role, label:ROLE_LABEL[role], lengthM:lengthM, segs:segs};}
+
+// تلاجات: مجموعة تتكون من عدة قواطع (كبائن)، كل قاطع = بابين، كل باب = رفين، وتحت كل قاطع حوض سفلي
+function shelf(segs){ return segs; }
+function door(shelf1, shelf2){ return [shelf1, shelf2]; }
+function cabinet(code, lengthM, doorLeft, doorRight, basinSegs){
+  return {code:code, lengthM:lengthM, doorLeft:doorLeft, doorRight:doorRight, basin:basinSegs};
+}
+
+const UNITS_FALLBACK = [
+ {code:"A-R01", zone:"الممر A", type:"rack", cat:"choc", components:[
+   comp("partition", 3.2, [seg("موردين المها",40,1.35), seg("شركة الفا",25,1.10), seg("بيت الحلويات",20,0.72), seg("درة الخليج",15,0.55)]),
+   comp("front_gondola", 0.6, [seg("موردين المها",100,1.4)]),
+   comp("back_gondola", 0.6, [seg("",100,0,true)]),
+ ]},
+ {code:"A-R02", zone:"الممر A", type:"rack", cat:"snack", components:[
+   comp("partition", 3.0, [seg("الوطنية للأغذية",50,1.42), seg("سناكس كو",30,0.95), seg("",20,0,true)]),
+   comp("front_gondola", 0.6, [seg("الوطنية للأغذية",100,1.5)]),
+   comp("back_gondola", 0.6, [seg("سناكس كو",100,0.8)]),
+ ]},
+ {code:"A-F01", zone:"الممر A", type:"fridge", cat:"dairy", cabinets:[
+   cabinet("A-F01-1", 1.2,
+     door( shelf([seg("مزارع الأصيل",100,1.5)]), shelf([seg("مزارع الأصيل",60,1.35), seg("نادك الخليج",40,0.95)]) ),
+     door( shelf([seg("نادك الخليج",70,1.05), seg("لبن بيت",30,0.6)]), shelf([seg("نادك الخليج",100,1.1)]) ),
+     [seg("مزارع الأصيل",60,1.3), seg("نادك الخليج",40,0.9)]
+   ),
+   cabinet("A-F01-2", 1.2,
+     door( shelf([seg("لبن بيت",100,0.55)]), shelf([seg("",100,0,true)]) ),
+     door( shelf([seg("مزارع الأصيل",50,1.2), seg("نادك الخليج",50,0.95)]), shelf([seg("لبن بيت",100,0.5)]) ),
+     [seg("لبن بيت",70,0.6), seg("",30,0,true)]
+   ),
+ ]},
+ {code:"B-R03", zone:"الممر B", type:"rack", cat:"bev", components:[
+   comp("partition", 3.2, [seg("مشروبات الشرق",45,1.28), seg("عصائر جود",35,0.9), seg("مويه صافي",20,0.68)]),
+   comp("front_gondola", 0.6, [seg("مشروبات الشرق",100,1.6)]),
+   comp("back_gondola", 0.6, [seg("",100,0,true)]),
+ ]},
+ {code:"B-R04", zone:"الممر B", type:"rack", cat:"clean", components:[
+   comp("partition", 2.4, [seg("تجارة النظافة",60,1.15), seg("كلين هوم",40,0.5)]),
+   comp("front_gondola", 0.6, [seg("تجارة النظافة",100,1.2)]),
+   comp("back_gondola", 0.6, [seg("كلين هوم",100,0.45)]),
+ ]},
+ {code:"B-S01", zone:"الممر B", type:"stand", cat:"choc", components:[
+   comp("stand", 1.5, [seg("شركة الفا",70,1.6), seg("",30,0,true)]),
+ ]},
+ {code:"C-F02", zone:"الممر C", type:"fridge", cat:"frozen", cabinets:[
+   cabinet("C-F02-1", 1.2,
+     door( shelf([seg("المجمدات الحديثة",100,1.1)]), shelf([seg("المجمدات الحديثة",65,1.05), seg("فروزن فريش",35,0.7)]) ),
+     door( shelf([seg("فروزن فريش",60,0.78), seg("بيت الثلج",40,0.4)]), shelf([seg("بيت الثلج",100,0.42)]) ),
+     [seg("المجمدات الحديثة",50,1.0), seg("فروزن فريش",50,0.7)]
+   ),
+   cabinet("C-F02-2", 1.2,
+     door( shelf([seg("فروزن فريش",100,0.72)]), shelf([seg("",100,0,true)]) ),
+     door( shelf([seg("بيت الثلج",60,0.38), seg("المجمدات الحديثة",40,0.95)]), shelf([seg("بيت الثلج",100,0.4)]) ),
+     [seg("فروزن فريش",55,0.68), seg("بيت الثلج",45,0.4)]
+   ),
+ ]},
+ {code:"C-R05", zone:"الممر C", type:"rack", cat:"bakery", components:[
+   comp("partition", 2.8, [seg("مخابز الديرة",65,1.3), seg("فرن الأصالة",35,0.85)]),
+   comp("front_gondola", 0.6, [seg("مخابز الديرة",100,1.35)]),
+   comp("back_gondola", 0.6, [seg("",100,0,true)]),
+ ]},
+ {code:"C-P01", zone:"الممر C", type:"pallet", cat:"promo", components:[
+   comp("pallet", 1.4, [seg("مشروبات الشرق",100,1.55)]),
+ ]},
+ {code:"C-P02", zone:"الممر C", type:"pallet", cat:"promo", components:[
+   comp("pallet", 1.4, [seg("الوطنية للأغذية",60,1.2), seg("سناكس كو",40,0.7)]),
+ ]},
+ {code:"D-R06", zone:"الممر D", type:"rack", cat:"care", components:[
+   comp("partition", 3.2, [seg("عناية الخليج",40,1.2), seg("جمال ستور",35,0.99), seg("بيوتي لاين",25,0.61)]),
+   comp("front_gondola", 0.6, [seg("عناية الخليج",100,1.25)]),
+   comp("back_gondola", 0.6, [seg("جمال ستور",100,0.95)]),
+ ]},
+ {code:"D-S02", zone:"الممر D", type:"stand", cat:"snack", components:[
+   comp("stand", 1.5, [seg("الوطنية للأغذية",100,1.05)]),
+ ]},
+ {code:"D-R07", zone:"الممر D", type:"rack", cat:"dairy", components:[
+   comp("partition", 2.4, [seg("مزارع الأصيل",45,1.32), seg("نادك الخليج",35,0.88), seg("",20,0,true)]),
+   comp("front_gondola", 0.6, [seg("مزارع الأصيل",100,1.4)]),
+   comp("back_gondola", 0.6, [seg("",100,0,true)]),
+ ]},
+ {code:"D-F03", zone:"الممر D", type:"fridge", cat:"dairy", cabinets:[
+   cabinet("D-F03-1", 1.2,
+     door( shelf([seg("نادك الخليج",100,1.1)]), shelf([seg("نادك الخليج",70,1.0), seg("مزارع الأصيل",30,1.4)]) ),
+     door( shelf([seg("لبن بيت",100,0.55)]), shelf([seg("لبن بيت",60,0.5), seg("",40,0,true)]) ),
+     [seg("نادك الخليج",50,1.0), seg("لبن بيت",50,0.5)]
+   ),
+ ]},
+];
+
+var UNITS = UNITS_FALLBACK; // سيتم استبداله ببيانات حية من جوجل شيت عند توفر رابط الباك إند
+var BACKEND_URL = localStorage.getItem('msc_backend_url') || '';
+var EDIT_PIN = localStorage.getItem('msc_edit_pin') || '';
+var isLiveMode = false;
+
+// fetch مع مهلة زمنية (timeout) — يمنع تعليق الواجهة لو الخادم مش راد
+function fetchWithTimeout(url, opts, timeoutMs){
+  opts = opts || {};
+  timeoutMs = timeoutMs || 12000;
+  var controller = new AbortController();
+  var timer = setTimeout(function(){ controller.abort(); }, timeoutMs);
+  return fetch(url, Object.assign({}, opts, {signal: controller.signal}))
+    .finally(function(){ clearTimeout(timer); });
+}
+
+let currentView = "cat";
+let currentDisplay = "cards";
+let tableSort = {key:"code", dir:1};
+let filters = {category:"", vendor:"", types:new Set(Object.keys(TYPES)), status:""};
+
+function statusOf(t){ if(t>=1.15) return "good"; if(t>=0.75) return "mid"; return "weak"; }
+
+function squarify(items, x, y, w, h){
+  var nodes = [];
+  function worst(row, length){
+    var max=-Infinity, min=Infinity, sum=0;
+    row.forEach(function(r){ if(r.area>max)max=r.area; if(r.area<min)min=r.area; sum+=r.area; });
+    var s2=sum*sum, l2=length*length;
+    return Math.max((l2*max)/s2, s2/(l2*min));
+  }
+  function recurse(items, x, y, w, h){
+    if(items.length===0) return;
+    if(items.length===1){
+      nodes.push({item:items[0].item, x:x, y:y, w:w, h:h});
+      return;
+    }
+    var horizontal = w>=h;
+    var length = horizontal ? h : w;
+    var row=[items[0]];
+    var i=1;
+    while(i<items.length){
+      var testRow = row.concat([items[i]]);
+      if(worst(testRow,length) <= worst(row,length)){ row=testRow; i++; }
+      else break;
+    }
+    var sum = row.reduce(function(s,r){return s+r.area;},0);
+    var thickness = sum/length;
+    if(horizontal){
+      var posY=y;
+      row.forEach(function(r){
+        var itemH = r.area/thickness;
+        nodes.push({item:r.item, x:x, y:posY, w:thickness, h:itemH});
+        posY+=itemH;
+      });
+      recurse(items.slice(row.length), x+thickness, y, w-thickness, h);
+    } else {
+      var posX=x;
+      row.forEach(function(r){
+        var itemW = r.area/thickness;
+        nodes.push({item:r.item, x:posX, y:y, w:itemW, h:thickness});
+        posX+=itemW;
+      });
+      recurse(items.slice(row.length), x, y+thickness, w, h-thickness);
+    }
+  }
+  recurse(items, x, y, w, h);
+  return nodes;
+}
+
+function renderTreemap(){
+  var section = document.getElementById('floor');
+  var visible = UNITS.filter(unitMatchesFilter);
+  var hidden = UNITS.filter(function(u){return !unitMatchesFilter(u);});
+  if(visible.length===0){
+    section.innerHTML = '<div class="treemap-wrap"><div style="padding:60px;text-align:center;color:var(--text-dim)">لا توجد وحدات مطابقة للفلاتر الحالية</div></div>';
+    return;
+  }
+  var W=1000, H=520;
+  var totalWidth = UNITS.reduce(function(s,u){return s+unitWidth(u);},0);
+  var allItems = UNITS.map(function(u){ return {item:u, area: (unitWidth(u)/totalWidth) * (W*H)}; });
+  allItems.sort(function(a,b){return b.area-a.area;});
+  var rects = squarify(allItems, 0, 0, W, H);
+
+  var boxesHtml = rects.map(function(r){
+    var u = r.item;
+    var match = unitMatchesFilter(u);
+    var occ = occPctOf(u);
+    var turn = avgTurnoverOf(u);
+    var st = statusOf(turn);
+    var color = currentView==='cat' ? CATS[u.cat].color : STATUS_COLOR[st];
+    var vacantHeavy = occ < 60;
+    var leftPct=(r.x/W*100), topPct=(r.y/H*100), wPct=(r.w/W*100), hPct=(r.h/H*100);
+    var showText = wPct>4 && hPct>5;
+    var label = showText ?
+      '<div class="treemap-label"><div><div class="code">'+u.code+'</div><div class="meta">'+CATS[u.cat].name+' · '+TYPES[u.type].name+'</div></div>'+
+      '<div class="meta">إشغال '+occ+'% · دوران '+turn+'</div></div>' : '';
+    return '<div class="treemap-box'+(match?'':' dimmed')+(vacantHeavy?' vacant-heavy':'')+'" '+
+      'style="left:'+leftPct+'%;top:'+topPct+'%;width:'+wPct+'%;height:'+hPct+'%;background:'+color+';" '+
+      'title="'+u.code+' — '+CATS[u.cat].name+' — إشغال '+occ+'% — دوران '+turn+'" '+
+      'onclick="openDrawer(\''+u.code+'\')">'+label+'</div>';
+  }).join('');
+
+  section.innerHTML = '<div class="treemap-wrap">'+
+    '<div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">حجم المربع = المساحة المؤجرة (م.ط) — اللون حسب '+(currentView==='cat'?'التصنيف':'حالة الأداء')+'. مربعات بخطوط مائلة = إشغال أقل من 60%.</div>'+
+    '<div class="treemap-container">'+boxesHtml+'</div></div>';
+}
+const STATUS_LABEL = {good:"جيد", mid:"متوسط", weak:"ضعيف"};
+const STATUS_COLOR = {good:"var(--good)", mid:"var(--mid)", weak:"var(--weak)"};
+
+function allSegs(u){
+  if(u.type==='fridge'){
+    var out=[];
+    u.cabinets.forEach(function(cab){
+      cab.doorLeft.forEach(function(sh){out=out.concat(sh);});
+      cab.doorRight.forEach(function(sh){out=out.concat(sh);});
+      out=out.concat(cab.basin);
+    });
+    return out;
+  }
+  return u.components.flatMap(function(c){return c.segs;});
+}
+function unitWidth(u){
+  if(u.type==='fridge'){ return u.cabinets.reduce(function(s,c){return s+c.lengthM;},0); }
+  return u.components.reduce(function(s,c){return s+c.lengthM;},0);
+}
+function cabinetCount(u){ return u.type==='fridge' ? u.cabinets.length : 0; }
+
+function allSegsWithMeta(u){
+  var out = [];
+  if(u.type==='fridge'){
+    u.cabinets.forEach(function(cab){
+      function addShelf(shelf){
+        shelf.forEach(function(s){ out.push(Object.assign({}, s, {allocatedLen: cab.lengthM*(s.pct/100), unitCode:u.code})); });
+      }
+      addShelf(cab.doorLeft[0]); addShelf(cab.doorLeft[1]);
+      addShelf(cab.doorRight[0]); addShelf(cab.doorRight[1]);
+      cab.basin.forEach(function(s){ out.push(Object.assign({}, s, {allocatedLen: cab.lengthM*(s.pct/100), unitCode:u.code})); });
+    });
+  } else {
+    u.components.forEach(function(c){
+      c.segs.forEach(function(s){ out.push(Object.assign({}, s, {allocatedLen: c.lengthM*(s.pct/100), unitCode:u.code})); });
+    });
+  }
+  return out;
+}
+function vendorCountOf(u){
+  var set = {};
+  allSegs(u).forEach(function(s){ if(!s.vacant) set[s.vendor]=true; });
+  return Object.keys(set).length;
+}
+function occPctOf(u){
+  var segs = allSegs(u);
+  var occ = segs.filter(function(s){return !s.vacant;}).length;
+  return Math.round((occ/segs.length)*100);
+}
+function avgTurnoverOf(u){
+  var segs = allSegs(u).filter(function(s){return !s.vacant;});
+  if(!segs.length) return 0;
+  return +(segs.reduce(function(a,s){return a+s.turnover;},0)/segs.length).toFixed(2);
+}
+
+function segFromRow(row){
+  var t = Number(row.turnover)||0;
+  var salesQty = (row.sales_qty!==undefined && row.sales_qty!=='') ? Number(row.sales_qty) : Math.round(t*118);
+  var salesValue = (row.sales_value!==undefined && row.sales_value!=='') ? Number(row.sales_value) : +(t*312).toFixed(1);
+  var purchasesValue = (row.purchases_value!==undefined && row.purchases_value!=='') ? Number(row.purchases_value) : +(salesValue*0.73).toFixed(1);
+  var turnoverValue = (row.turnover_value!==undefined && row.turnover_value!=='') ? Number(row.turnover_value) : +(t*0.91).toFixed(2);
+  return {
+    vendor: row.vendor, pct: Number(row.pct)||0, turnover: t,
+    vacant: String(row.vacant).toUpperCase()==='TRUE',
+    salesQty: salesQty, salesValue: salesValue, purchasesValue: purchasesValue, turnoverValue: turnoverValue,
+    rowMeta: {
+      row_id: row.row_id, unit_code: row.unit_code, zone: row.zone, type: row.type, cat: row.cat,
+      cabinet_code: row.cabinet_code, cabinet_length_m: row.cabinet_length_m, cabinet_order: row.cabinet_order,
+      group_key: row.group_key, group_length_m: row.group_length_m, seg_order: row.seg_order
+    }
+  };
+}
+
+function hydrateUnitsFromRows(rows){
+  var byUnit = {};
+  rows.forEach(function(r){
+    if(!byUnit[r.unit_code]) byUnit[r.unit_code] = {code:r.unit_code, zone:r.zone, type:r.type, cat:r.cat, rows:[]};
+    byUnit[r.unit_code].rows.push(r);
+  });
+
+  var units = Object.keys(byUnit).map(function(code){
+    var u = byUnit[code];
+    if(u.type==='fridge'){
+      var byCabinet = {};
+      u.rows.forEach(function(r){
+        var ck = r.cabinet_code || 'CAB1';
+        if(!byCabinet[ck]) byCabinet[ck] = {code:ck, lengthM:Number(r.cabinet_length_m)||1.2, order:Number(r.cabinet_order)||0, rows:[]};
+        byCabinet[ck].rows.push(r);
+      });
+      var cabinets = Object.keys(byCabinet).map(function(ck){
+        var cab = byCabinet[ck];
+        function groupSegs(key){
+          return cab.rows.filter(function(r){return r.group_key===key;})
+            .sort(function(a,b){return (Number(a.seg_order)||0)-(Number(b.seg_order)||0);})
+            .map(segFromRow);
+        }
+        return {
+          code: cab.code, lengthM: cab.lengthM,
+          doorLeft: [groupSegs('doorLeft_1'), groupSegs('doorLeft_2')],
+          doorRight: [groupSegs('doorRight_1'), groupSegs('doorRight_2')],
+          basin: groupSegs('basin')
+        };
+      }).sort(function(a,b){return (byCabinet[a.code].order)-(byCabinet[b.code].order);});
+      return {code:u.code, zone:u.zone, type:u.type, cat:u.cat, cabinets:cabinets};
+    } else {
+      var byGroup = {};
+      u.rows.forEach(function(r){
+        if(!byGroup[r.group_key]) byGroup[r.group_key] = {role:r.group_key, lengthM:Number(r.group_length_m)||0, rows:[]};
+        byGroup[r.group_key].rows.push(r);
+      });
+      var roleOrder = {partition:1, front_gondola:2, back_gondola:3, stand:1, pallet:1};
+      var components = Object.keys(byGroup).map(function(k){
+        var g = byGroup[k];
+        var segs = g.rows.sort(function(a,b){return (Number(a.seg_order)||0)-(Number(b.seg_order)||0);}).map(segFromRow);
+        return comp(g.role, g.lengthM, segs);
+      }).sort(function(a,b){return (roleOrder[a.role]||9)-(roleOrder[b.role]||9);});
+      return {code:u.code, zone:u.zone, type:u.type, cat:u.cat, components:components};
+    }
+  });
+  return units;
+}
+
+async function loadFromBackend(){
+  var banner = document.getElementById('mode-banner');
+  if(!BACKEND_URL){
+    isLiveMode = false;
+    UNITS = UNITS_FALLBACK;
+    if(banner) banner.innerHTML = 'وضع عرض تجريبي (بدون اتصال) — من "الإعدادات" اربط اللوحة بجوجل شيت لتفعيل التعديل الحي.';
+    return;
+  }
+  try{
+    var res = await fetchWithTimeout(BACKEND_URL + '?action=get&t=' + Date.now(), {}, 12000);
+    if(!res.ok) throw new Error('الخادم رجّع خطأ (كود '+res.status+')');
+    var data;
+    try{ data = await res.json(); }
+    catch(e){ throw new Error('رد الخادم غير صالح — تأكد إن رابط الـ Web App صحيح من "الإعدادات"'); }
+    if(!data.ok) throw new Error(data.error||'فشل التحميل');
+    UNITS = hydrateUnitsFromRows(data.rows);
+    isLiveMode = true;
+    if(banner) banner.innerHTML = 'متصل ببيانات حية من جوجل شيت ✓';
+  } catch(err){
+    isLiveMode = false;
+    UNITS = UNITS_FALLBACK;
+    var msg = err.name==='AbortError' ? 'انتهت مهلة الاتصال (أكثر من 12 ثانية) بدون رد من الخادم' : err.message;
+    if(banner) banner.innerHTML = 'تعذر الاتصال بالباك إند (' + msg + ') — جاري عرض بيانات تجريبية محليًا.';
+  }
+}
+
+async function init(){
+  await loadFromBackend();
+
+  var catSel = document.getElementById('f-category');
+  Object.keys(CATS).forEach(function(k){
+    var v=CATS[k]; var o=document.createElement('option'); o.value=k; o.textContent=v.name; catSel.appendChild(o);
+  });
+  var vendorSet = {};
+  UNITS.forEach(function(u){ allSegs(u).forEach(function(s){ if(!s.vacant) vendorSet[s.vendor]=true; }); });
+  var vendors = Object.keys(vendorSet).sort();
+  var venSel = document.getElementById('f-vendor');
+  vendors.forEach(function(v){ var o=document.createElement('option'); o.value=v; o.textContent=v; venSel.appendChild(o); });
+
+  var typeWrap = document.getElementById('f-type');
+  Object.keys(TYPES).forEach(function(k){
+    var v=TYPES[k];
+    var label=document.createElement('label'); label.className='chip';
+    label.innerHTML = '<input type="checkbox" checked data-type="'+k+'"> '+v.icon+' '+v.name;
+    typeWrap.appendChild(label);
+  });
+  Array.prototype.forEach.call(typeWrap.querySelectorAll('input'), function(cb){
+    cb.addEventListener('change', function(e){
+      if(e.target.checked) filters.types.add(e.target.dataset.type); else filters.types.delete(e.target.dataset.type);
+      render();
+    });
+  });
+  catSel.addEventListener('change', function(e){filters.category=e.target.value; render();});
+  venSel.addEventListener('change', function(e){filters.vendor=e.target.value; render();});
+  document.getElementById('f-status').addEventListener('change', function(e){filters.status=e.target.value; render();});
+
+  var legend = document.getElementById('legend');
+  Object.keys(CATS).forEach(function(k){
+    var c=CATS[k];
+    var row=document.createElement('div'); row.className='legend-item';
+    row.innerHTML = '<span class="legend-dot" style="background:'+c.color+'"></span>'+c.name;
+    legend.appendChild(row);
+  });
+
+  render();
+}
+
+function resetFilters(){
+  filters = {category:"", vendor:"", types:new Set(Object.keys(TYPES)), status:""};
+  document.getElementById('f-category').value="";
+  document.getElementById('f-vendor').value="";
+  document.getElementById('f-status').value="";
+  Array.prototype.forEach.call(document.querySelectorAll('#f-type input'), function(cb){cb.checked=true;});
+  render();
+}
+
+function setView(v){
+  currentView=v;
+  document.getElementById('btn-cat').classList.toggle('active', v==='cat');
+  document.getElementById('btn-perf').classList.toggle('active', v==='perf');
+  render();
+}
+
+function setDisplay(d){
+  currentDisplay=d;
+  ['cards','treemap','table','vendors'].forEach(function(k){
+    document.getElementById('btn-'+k).classList.toggle('active', k===d);
+  });
+  document.getElementById('color-toggle').style.visibility = (d==='table'||d==='vendors') ? 'hidden' : 'visible';
+  render();
+}
+
+function computeKPIs(){
+  var totalArea = UNITS.reduce(function(s,u){return s+unitWidth(u);},0);
+  var vendorSet={};
+  UNITS.forEach(function(u){ allSegs(u).forEach(function(s){ if(!s.vacant) vendorSet[s.vendor]=true; }); });
+  var total=0, occ=0;
+  UNITS.forEach(function(u){ allSegs(u).forEach(function(s){total++; if(!s.vacant) occ++;}); });
+  var occRate = Math.round((occ/total)*100);
+  var turns = [];
+  UNITS.forEach(function(u){ allSegs(u).forEach(function(s){ if(!s.vacant) turns.push(s.turnover); }); });
+  var avgTurnover = (turns.reduce(function(a,b){return a+b;},0)/turns.length).toFixed(2);
+  return {totalArea:totalArea.toFixed(1), vendorCount:Object.keys(vendorSet).length, occRate:occRate, avgTurnover:avgTurnover, catCount:Object.keys(CATS).length};
+}
+
+function renderKPIs(){
+  var k = computeKPIs();
+  document.getElementById('kpi-bar').innerHTML =
+    '<div class="kpi"><div class="kpi-label">إجمالي المساحة</div><div class="kpi-value mono">'+k.totalArea+'<small>م.ط</small></div></div>' +
+    '<div class="kpi"><div class="kpi-label">عدد الموردين النشطين</div><div class="kpi-value mono">'+k.vendorCount+'</div></div>' +
+    '<div class="kpi accent"><div class="kpi-label">نسبة الإشغال</div><div class="kpi-value mono">'+k.occRate+'<small>%</small></div></div>' +
+    '<div class="kpi"><div class="kpi-label">متوسط معدل الدوران</div><div class="kpi-value mono">'+k.avgTurnover+'</div></div>' +
+    '<div class="kpi"><div class="kpi-label">عدد التصنيفات</div><div class="kpi-value mono">'+k.catCount+'</div></div>';
+}
+
+function renderEquipmentBar(){
+  var racks = UNITS.filter(function(u){return u.type==='rack';});
+  var fridges = UNITS.filter(function(u){return u.type==='fridge';});
+  var pallets = UNITS.filter(function(u){return u.type==='pallet';});
+  var stands = UNITS.filter(function(u){return u.type==='stand';});
+  var gondolas = racks.reduce(function(s,u){return s+u.components.filter(function(c){return c.role==='front_gondola'||c.role==='back_gondola';}).length;},0);
+  var totalCabinets = fridges.reduce(function(s,u){return s+u.cabinets.length;},0);
+  var totalDoors = totalCabinets*2;
+  var totalShelves = totalCabinets*4;
+
+  document.getElementById('equip-bar').innerHTML =
+    '<div class="equip-card"><div class="title">'+TYPES.rack.icon+' أرفف <span class="n mono">'+racks.length+'</span></div>'+
+    '<div class="desc">كل رف: قواطع رئيسية + جندول أمامي + جندول خلفي — إجمالي '+gondolas+' جندول</div></div>'+
+    '<div class="equip-card"><div class="title">'+TYPES.fridge.icon+' مجموعات تلاجات <span class="n mono">'+fridges.length+'</span></div>'+
+    '<div class="desc">إجمالي '+totalCabinets+' قاطع (تلاجة مستقلة) — '+totalDoors+' باب عرض — '+totalShelves+' رف داخلي</div></div>'+
+    '<div class="equip-card"><div class="title">'+TYPES.pallet.icon+' طبليات عروض <span class="n mono">'+pallets.length+'</span></div>'+
+    '<div class="desc">وحدات عرض موسمية مستقلة لا تتبع تصنيف رف ثابت</div></div>'+
+    '<div class="equip-card"><div class="title">'+TYPES.stand.icon+' استاندات <span class="n mono">'+stands.length+'</span></div>'+
+    '<div class="desc">وحدات عرض فردية بجانب الممرات</div></div>';
+}
+
+function unitMatchesFilter(u){
+  if(filters.category && u.cat!==filters.category) return false;
+  if(!filters.types.has(u.type)) return false;
+  if(filters.vendor && !allSegs(u).some(function(s){return s.vendor===filters.vendor;})) return false;
+  if(filters.status && !allSegs(u).some(function(s){return !s.vacant && statusOf(s.turnover)===filters.status;})) return false;
+  return true;
+}
+
+function segFill(s, catColor){
+  if(s.vacant) return 'repeating-linear-gradient(45deg, var(--vacant), var(--vacant) 4px, #cfc8b6 4px, #cfc8b6 8px)';
+  return currentView==='cat' ? catColor : STATUS_COLOR[statusOf(s.turnover)];
+}
+function segTitle(s){
+  return s.vacant ? 'مساحة شاغرة' : (s.vendor+' — '+s.pct+'% — دوران '+s.turnover);
+}
+function renderStack(segs, catColor, heightPx){
+  var inner = segs.map(function(s){
+    return '<div class="seg" style="height:'+s.pct+'%;background:'+segFill(s,catColor)+'" title="'+segTitle(s)+'"></div>';
+  }).join('');
+  return '<div class="seg-stack" style="height:'+heightPx+'px">' + inner + '</div>';
+}
+function renderCompStrip(c, catColor){
+  var inner = c.segs.map(function(s){
+    return '<div class="seg" style="width:'+s.pct+'%;height:100%;display:inline-block;background:'+segFill(s,catColor)+'" title="'+segTitle(s)+'"></div>';
+  }).join('');
+  return '<div class="comp-strip"><div class="comp-label"><span>'+ROLE_ICON[c.role]+' '+c.label+'</span><span class="mono">'+c.lengthM+' م</span></div>'+
+    '<div class="comp-stack">'+inner+'</div></div>';
+}
+
+function renderHStrip(segs, catColor){
+  return segs.map(function(s){
+    return '<div class="seg" style="width:'+s.pct+'%;height:100%;display:inline-block;background:'+segFill(s,catColor)+'" title="'+segTitle(s)+'"></div>';
+  }).join('');
+}
+function renderFridgeDoor(shelves, catColor){
+  var inner = shelves.map(function(sh){
+    return '<div class="fridge-shelf">'+renderHStrip(sh, catColor)+'</div>';
+  }).join('');
+  return '<div class="fridge-door">'+inner+'</div>';
+}
+function renderCabinet(cab, idx, catColor){
+  var basinInner = renderHStrip(cab.basin, catColor);
+  return '<div class="cabinet-unit">'+
+    '<div class="cabinet-tag">قاطع '+(idx+1)+' · '+cab.code+'</div>'+
+    '<div class="fridge-doors">'+renderFridgeDoor(cab.doorLeft, catColor)+renderFridgeDoor(cab.doorRight, catColor)+'</div>'+
+    '<div class="fridge-basin"><div class="comp-label"><span>'+ROLE_ICON.basin+' '+ROLE_LABEL.basin+'</span></div>'+
+    '<div class="comp-stack" style="height:22px">'+basinInner+'</div></div>'+
+    '</div>';
+}
+
+function renderUnit(u){
+  var match = unitMatchesFilter(u);
+  var catColor = CATS[u.cat].color;
+  var body = '';
+
+  if(u.type==='rack'){
+    var partition = u.components.filter(function(c){return c.role==='partition';})[0];
+    var front = u.components.filter(function(c){return c.role==='front_gondola';})[0];
+    var back = u.components.filter(function(c){return c.role==='back_gondola';})[0];
+    body = renderStack(partition.segs, catColor, 56) + renderCompStrip(front, catColor) + renderCompStrip(back, catColor);
+  } else if(u.type==='fridge'){
+    body = u.cabinets.map(function(cab,idx){return renderCabinet(cab, idx, catColor);}).join('');
+  } else {
+    var c0 = u.components[0];
+    body = renderStack(c0.segs, catColor, 56);
+  }
+
+  var tagExtra = u.type==='fridge' ? '<span class="mono">'+u.cabinets.length+' قاطع</span>' : '';
+
+  return '<div class="unit '+(match?'':'dimmed')+'" onclick="openDrawer(\''+u.code+'\')">'+
+    '<div class="unit-tag"><span>'+TYPES[u.type].icon+'</span><span class="code">'+u.code+'</span>'+tagExtra+'</div>'+
+    body+
+    '<div class="unit-foot"><span class="cat-name">'+CATS[u.cat].name+'</span><span class="mono">'+unitWidth(u)+' م</span></div></div>';
+}
+
+function renderFloor(){
+  var floor = document.getElementById('floor');
+  var zones = [];
+  UNITS.forEach(function(u){ if(zones.indexOf(u.zone)===-1) zones.push(u.zone); });
+  floor.innerHTML = zones.map(function(zone){
+    var zoneUnits = UNITS.filter(function(u){return u.zone===zone;});
+    var cards = zoneUnits.map(function(u){return renderUnit(u);}).join('');
+    return '<div class="zone"><div class="zone-title">'+zone+'</div><div class="zone-grid">'+cards+'</div></div>';
+  }).join('');
+}
+
+function renderVendorRows(segs, catColor){
+  return segs.map(function(s){
+    if(s.vacant){
+      return '<div class="vendor-row"><div class="top-line"><span class="name" style="color:var(--text-dim)">مساحة شاغرة</span><span class="mono">'+s.pct+'%</span></div>'+
+        '<div class="bar-track"><div class="bar-fill" style="width:'+s.pct+'%;background:var(--vacant)"></div></div></div>';
+    }
+    var st = statusOf(s.turnover);
+    return '<div class="vendor-row"><div class="top-line"><span class="name">'+s.vendor+'</span><span class="mono">'+s.pct+'%</span></div>'+
+      '<div class="bar-track"><div class="bar-fill" style="width:'+s.pct+'%;background:'+catColor+'"></div></div>'+
+      '<div class="vendor-meta"><span>الدوران: <strong class="mono">'+s.turnover+'</strong></span>'+
+      '<span class="status-badge" style="background:'+STATUS_COLOR[st]+'">'+STATUS_LABEL[st]+'</span></div></div>';
+  }).join('');
+}
+
+// مصدر واحد لتعريف مجموعات القاطع (بابين × رفين + حوض) — يستخدمه وضع العرض ووضع التعديل معًا
+// بدل ما كان كل وضع بيكرر نفس المنطق لوحده
+function fridgeCabinetGroups(cab){
+  return [
+    {title:'الباب الأيسر — رف 1', icon:'▯', segs:cab.doorLeft[0], key:'doorLeft_1'},
+    {title:'الباب الأيسر — رف 2', icon:'▯', segs:cab.doorLeft[1], key:'doorLeft_2'},
+    {title:'الباب الأيمن — رف 1', icon:'▯', segs:cab.doorRight[0], key:'doorRight_1'},
+    {title:'الباب الأيمن — رف 2', icon:'▯', segs:cab.doorRight[1], key:'doorRight_2'},
+    {title:ROLE_LABEL.basin, icon:ROLE_ICON.basin, segs:cab.basin, key:'basin'},
+  ];
+}
+
+function buildFridgeDrawerHtml(u){
+  var catColor = CATS[u.cat].color;
+  return u.cabinets.map(function(cab, idx){
+    var groupsHtml = fridgeCabinetGroups(cab).map(function(g){
+      return '<div class="comp-block"><div class="comp-block-head"><span>'+g.icon+' '+g.title+'</span></div>'+
+        '<div class="comp-block-body">'+renderVendorRows(g.segs, catColor)+'</div></div>';
+    }).join('');
+    return '<div class="cabinet-block"><div class="cabinet-head"><span>قاطع '+(idx+1)+' — '+cab.code+'</span><span class="mono">'+cab.lengthM+' م</span></div>'+
+      groupsHtml + '</div>';
+  }).join('');
+}
+
+var drawerEditMode = false;
+var currentDrawerCode = null;
+var groupContexts = {};
+var pendingDeleteIds = [];
+var editRowSeq = 0;
+
+function openDrawer(code, forceEdit){
+  currentDrawerCode = code;
+  drawerEditMode = forceEdit===true ? true : (forceEdit===false ? false : drawerEditMode);
+  var u = UNITS.filter(function(x){return x.code===code;})[0];
+  if(!u){
+    // ربما الكود يخص قاطع تلاجة بعينه (زي A-F01-1) وليس الوحدة الأم
+    u = UNITS.filter(function(x){return x.type==='fridge' && x.cabinets.some(function(c){return c.code===code;});})[0];
+    if(u) currentDrawerCode = u.code;
+  }
+  if(!u){ showToast('لم يتم العثور على كود مطابق: '+code); return; }
+
+  var overlay = document.getElementById('overlay');
+  var drawer = document.getElementById('drawer');
+  var segsFlat = allSegs(u).filter(function(s){return !s.vacant;});
+  var avgTurn = segsFlat.length ? (segsFlat.reduce(function(a,s){return a+s.turnover;},0)/segsFlat.length).toFixed(2) : '0.00';
+  var occCount = allSegs(u).filter(function(s){return !s.vacant;}).length;
+  var totalCount = allSegs(u).length;
+  var occPct = totalCount ? Math.round((occCount/totalCount)*100) : 0;
+
+  var compsHtml;
+  if(drawerEditMode){
+    compsHtml = buildEditableDrawerHtml(u);
+  } else if(u.type==='fridge'){
+    compsHtml = buildFridgeDrawerHtml(u);
+  } else {
+    compsHtml = u.components.map(function(c){
+      var rows = renderVendorRows(c.segs, CATS[u.cat].color);
+      return '<div class="comp-block"><div class="comp-block-head"><span>'+ROLE_ICON[c.role]+' '+c.label+'</span><span class="mono">'+c.lengthM+' م</span></div>'+
+        '<div class="comp-block-body">'+rows+'</div></div>';
+    }).join('');
+  }
+
+  var editBtnHtml = isLiveMode ?
+    '<button class="edit-toggle-btn" onclick="toggleDrawerEditMode()">'+(drawerEditMode?'إلغاء التعديل':'✎ تعديل')+'</button>' :
+    '<span class="hint-text">فعّل الاتصال بجوجل شيت من الإعدادات للتعديل</span>';
+
+  var footerHtml = drawerEditMode ?
+    '<div style="padding:0 22px 22px;"><button class="save-edit-btn" onclick="saveEdits(this)">💾 حفظ التعديلات</button></div>' :
+    '<footer class="note">معدل الدوران يقيس مدى استغلال المورد للمساحة المخصصة له مقارنة بالمتوسط. القيم أقل من 0.75 تشير إلى مساحة أكبر من استحقاق المورد الحالي.</footer>';
+
+  drawer.innerHTML =
+    '<div class="drawer-head"><div><div class="code">'+u.zone+' · '+TYPES[u.type].name+'</div><h2>'+u.code+'</h2></div>'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+editBtnHtml+'<button class="close-btn" onclick="closeDrawer()">✕</button></div></div>'+
+    '<div class="drawer-body"><div class="stat-row">'+
+    '<div class="stat-box"><div class="v">'+unitWidth(u)+'<small style="font-size:11px"> م</small></div><div class="l">الطول الكلي</div></div>'+
+    '<div class="stat-box"><div class="v">'+occPct+'%</div><div class="l">نسبة الإشغال</div></div>'+
+    '<div class="stat-box"><div class="v">'+avgTurn+'</div><div class="l">متوسط الدوران</div></div></div>'+
+    '<h3 style="font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">'+(drawerEditMode?'تعديل المكونات':'تفصيل المكونات')+' — '+CATS[u.cat].name+'</h3>'+
+    compsHtml+'</div>'+
+    footerHtml;
+  overlay.classList.add('open');
+
+  if(drawerEditMode){
+    updateGroupPctHints();
+    drawer.addEventListener('input', function(e){
+      if(e.target.classList.contains('pct-in')) updateGroupPctHints();
+    });
+  }
+}
+function closeDrawer(){ document.getElementById('overlay').classList.remove('open'); drawerEditMode=false; }
+function toggleDrawerEditMode(){
+  if(!drawerEditMode){
+    if(EDIT_PIN){
+      var entered = window.prompt('أدخل رمز التعديل للمتابعة:');
+      if(entered===null) return; // المستخدم ضغط إلغاء
+      if(entered !== EDIT_PIN){ showToast('رمز غير صحيح ✕ — لم يتم فتح وضع التعديل'); return; }
+    }
+    openDrawer(currentDrawerCode, true);
+  } else {
+    openDrawer(currentDrawerCode, false);
+  }
+}
+
+// ==== بناء نموذج التعديل ====
+function editSegRowHtml(seg){
+  var rowId = (seg.rowMeta && seg.rowMeta.row_id) ? seg.rowMeta.row_id : '';
+  var vendorVal = (seg.vendor||'').replace(/"/g,'&quot;');
+  return '<div class="edit-seg-row" data-row-id="'+rowId+'">'+
+    '<input type="text" class="vendor-in" placeholder="اسم المورد (فاضي = شاغر)" value="'+vendorVal+'">'+
+    '<input type="number" class="pct-in" value="'+(seg.pct||0)+'" min="0" max="100">'+
+    '<input type="number" class="turn-in" value="'+(seg.turnover||0)+'" step="0.01" min="0">'+
+    '<button class="del-seg-btn" onclick="removeEditRow(this)" title="حذف">✕</button>'+
+    '</div>';
+}
+function removeEditRow(btn){
+  var row = btn.closest('.edit-seg-row');
+  var rid = row.getAttribute('data-row-id');
+  if(rid) pendingDeleteIds.push(rid);
+  row.remove();
+}
+function addEditRow(containerId){
+  var container = document.getElementById(containerId);
+  if(!container) return;
+  var wrap = document.createElement('div');
+  wrap.innerHTML = editSegRowHtml({vendor:'', pct:0, turnover:0});
+  container.appendChild(wrap.firstChild);
+}
+function buildEditableGroupBlock(title, segs, groupCtx){
+  editRowSeq++;
+  var containerId = 'editgrp_'+editRowSeq;
+  groupContexts[containerId] = Object.assign({}, groupCtx, {label:title});
+  var rowsHtml = segs.map(editSegRowHtml).join('');
+  return '<div class="comp-block"><div class="comp-block-head"><span>'+title+'</span></div>'+
+    '<div class="comp-block-body" id="'+containerId+'">'+rowsHtml+'</div>'+
+    '<div style="padding:8px 12px 12px;"><button class="add-seg-btn" onclick="addEditRow(\''+containerId+'\')">+ إضافة مورد لهذه المساحة</button></div>'+
+    '<div class="group-pct-hint" id="hint_'+containerId+'"></div></div>';
+}
+
+// يحدّث مؤشر "المجموع: XX%" تحت كل مجموعة فور الكتابة، ويعلّم المجموعات الناقصة/الزايدة
+function updateGroupPctHints(){
+  Object.keys(groupContexts).forEach(function(containerId){
+    var container = document.getElementById(containerId);
+    var hint = document.getElementById('hint_'+containerId);
+    if(!container || !hint) return;
+    var inputs = container.querySelectorAll('.pct-in');
+    var sum = 0;
+    inputs.forEach(function(inp){ sum += Number(inp.value)||0; });
+    sum = Math.round(sum*100)/100;
+    var bad = inputs.length>0 && Math.abs(sum-100) > 0.5;
+    container.classList.toggle('group-invalid', bad);
+    hint.classList.toggle('bad', bad);
+    hint.textContent = inputs.length===0 ? '' : ('المجموع الحالي: '+sum+'%'+(bad?' — لازم يكون 100%':''));
+  });
+}
+function buildEditableDrawerHtml(u){
+  pendingDeleteIds = [];
+  groupContexts = {};
+  editRowSeq = 0;
+  var baseCtx = {unit_code:u.code, zone:u.zone, type:u.type, cat:u.cat};
+  if(u.type==='fridge'){
+    return u.cabinets.map(function(cab, cabIdx){
+      var cabCtx = Object.assign({}, baseCtx, {cabinet_code:cab.code, cabinet_length_m:cab.lengthM, cabinet_order:cabIdx+1});
+      var groupsHtml = fridgeCabinetGroups(cab).map(function(g){
+        return buildEditableGroupBlock(g.icon+' '+g.title, g.segs, Object.assign({},cabCtx,{group_key:g.key, group_length_m:''}));
+      }).join('');
+      return '<div class="cabinet-block"><div class="cabinet-head"><span>قاطع — '+cab.code+'</span></div>'+groupsHtml+'</div>';
+    }).join('');
+  }
+  return u.components.map(function(c){
+    var ctx = Object.assign({}, baseCtx, {group_key:c.role, group_length_m:c.lengthM});
+    return buildEditableGroupBlock(ROLE_ICON[c.role]+' '+c.label, c.segs, ctx);
+  }).join('');
+}
+
+async function postToBackend(action, payload){
+  var res;
+  try{
+    res = await fetchWithTimeout(BACKEND_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      // edit_token بيتبعت مع كل طلب — الباك إند حاليًا مش بيتحقق منه، لازم تضيف
+      // مقارنة بسيطة في Code.gs لو عايز الحماية دي تبقى فعلية مش شكلية بس
+      body: JSON.stringify({action:action, payload:payload, edit_token: EDIT_PIN || undefined})
+    }, 12000);
+  } catch(err){
+    if(err.name==='AbortError') throw new Error('انتهت مهلة الاتصال بالخادم (أكثر من 12 ثانية) — تحقق من الإنترنت وحاول تاني');
+    throw new Error('تعذر الوصول للخادم: ' + err.message);
+  }
+  if(!res.ok){
+    throw new Error('الخادم رجّع خطأ (كود '+res.status+') — تحقق من رابط الـ Web App وإعدادات الصلاحية في Apps Script');
+  }
+  var data;
+  try{ data = await res.json(); }
+  catch(e){ throw new Error('رد الخادم غير صالح (مش JSON) — تأكد إن رابط الـ Web App صحيح ومنشور بشكل عام'); }
+  if(data && data.ok===false) throw new Error(data.error || 'فشلت العملية على الخادم من غير سبب محدد');
+  return data;
+}
+
+async function saveEdits(btn){
+  if(!isLiveMode){ showToast('لازم تربط اللوحة بجوجل شيت الأول من الإعدادات'); return; }
+
+  // تحقق إلزامي: مجموع النسب داخل كل مجموعة (قاطع/جندول/باب/حوض) لازم يساوي 100%
+  // من غير الفحص ده، الحفظ كان بيمر حتى لو النسب ناقصة أو زايدة، وده كان بيبوّظ
+  // حسابات الإشغال ومعدل الدوران بصمت من غير ما حد ياخد باله
+  updateGroupPctHints();
+  var invalidGroups = [];
+  Object.keys(groupContexts).forEach(function(containerId){
+    var container = document.getElementById(containerId);
+    if(!container) return;
+    var inputs = container.querySelectorAll('.pct-in');
+    if(inputs.length===0) return;
+    var sum = 0; inputs.forEach(function(inp){ sum += Number(inp.value)||0; });
+    sum = Math.round(sum*100)/100;
+    if(Math.abs(sum-100) > 0.5) invalidGroups.push(groupContexts[containerId].label + ' (المجموع: ' + sum + '%)');
+  });
+  if(invalidGroups.length>0){
+    showToast('لازم يكون مجموع النسب 100% بالظبط في كل مساحة قبل الحفظ. راجع: ' +
+      invalidGroups.slice(0,2).join('، ') + (invalidGroups.length>2 ? ' وغيرها (محدد بخط أحمر)' : ''));
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'جارِ الحفظ...';
+  try{
+    var calls = [];
+    pendingDeleteIds.forEach(function(rid){ calls.push(postToBackend('delete', {row_id:rid})); });
+    Object.keys(groupContexts).forEach(function(containerId){
+      var ctx = groupContexts[containerId];
+      var container = document.getElementById(containerId);
+      if(!container) return;
+      var rows = container.querySelectorAll('.edit-seg-row');
+      rows.forEach(function(row, idx){
+        var rowId = row.getAttribute('data-row-id');
+        var vendor = row.querySelector('.vendor-in').value.trim();
+        var pct = Number(row.querySelector('.pct-in').value)||0;
+        var turnover = Number(row.querySelector('.turn-in').value)||0;
+        var vacant = vendor==='' ? 'TRUE':'FALSE';
+        var payload = Object.assign({}, ctx, {vendor:vendor, pct:pct, turnover:turnover, vacant:vacant, seg_order:idx+1});
+        if(rowId){ payload.row_id = rowId; calls.push(postToBackend('update', payload)); }
+        else { calls.push(postToBackend('add', payload)); }
+      });
+    });
+    await Promise.all(calls);
+    await loadFromBackend();
+    render();
+    var savedCode = currentDrawerCode;
+    drawerEditMode = false;
+    closeDrawer();
+    showToast('تم حفظ التعديلات بنجاح ✓');
+  } catch(err){
+    showToast('حصل خطأ أثناء الحفظ: '+err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 حفظ التعديلات';
+  }
+}
+
+function showToast(msg){
+  var t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 22px;border-radius:999px;font-family:Tajawal,sans-serif;font-size:13px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.3);';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 2600);
+}
+
+// ==== الإعدادات ====
+function openSettingsModal(){
+  document.getElementById('backend-url-input').value = BACKEND_URL;
+  document.getElementById('edit-pin-input').value = EDIT_PIN;
+  document.getElementById('settings-modal').classList.add('open');
+}
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+async function saveBackendUrl(){
+  var val = document.getElementById('backend-url-input').value.trim();
+  var pin = document.getElementById('edit-pin-input').value.trim();
+  BACKEND_URL = val;
+  EDIT_PIN = pin;
+  localStorage.setItem('msc_backend_url', val);
+  localStorage.setItem('msc_edit_pin', pin);
+  closeModal('settings-modal');
+  document.getElementById('mode-banner').textContent = 'جارِ الاتصال...';
+  await loadFromBackend();
+  render();
+}
+
+// ==== مسح QR بالكاميرا ====
+var qrStream = null, qrRAF = null;
+function openScanModal(){
+  document.getElementById('scan-modal').classList.add('open');
+  startQRScanner();
+}
+function closeScanModal(){
+  document.getElementById('scan-modal').classList.remove('open');
+  stopQRScanner();
+}
+async function startQRScanner(){
+  var status = document.getElementById('qr-status');
+  var video = document.getElementById('qr-video');
+  var canvas = document.getElementById('qr-canvas');
+  if(typeof jsQR === 'undefined'){
+    status.textContent = 'تعذر تحميل مكتبة قراءة QR (تحتاج اتصال إنترنت) — استخدم الإدخال اليدوي بالأسفل.';
+    return;
+  }
+  try{
+    qrStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    video.srcObject = qrStream;
+    status.textContent = 'وجّه الكاميرا نحو كود QR الملصق على الرف/التلاجة...';
+    var ctx = canvas.getContext('2d');
+    function tick(){
+      if(video.readyState === video.HAVE_ENOUGH_DATA){
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        var imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+        var code = jsQR(imgData.data, imgData.width, imgData.height);
+        if(code && code.data){
+          status.textContent = 'تم العثور على الكود: '+code.data;
+          closeScanModal();
+          openDrawer(code.data.trim(), true);
+          return;
+        }
+      }
+      qrRAF = requestAnimationFrame(tick);
+    }
+    qrRAF = requestAnimationFrame(tick);
+  } catch(err){
+    status.textContent = 'تعذر تشغيل الكاميرا ('+err.message+') — استخدم الإدخال اليدوي بالأسفل.';
+  }
+}
+function stopQRScanner(){
+  if(qrRAF) cancelAnimationFrame(qrRAF);
+  if(qrStream){ qrStream.getTracks().forEach(function(t){t.stop();}); qrStream=null; }
+}
+function manualCodeLookup(){
+  var val = document.getElementById('manual-code-input').value.trim();
+  if(!val) return;
+  closeScanModal();
+  openDrawer(val, true);
+}
+
+// ==== طباعة أكواد QR ====
+function collectPrintableCodes(){
+  var codes = [];
+  UNITS.forEach(function(u){
+    if(u.type==='fridge'){
+      u.cabinets.forEach(function(cab){ codes.push({code:cab.code, sub:u.zone+' · '+CATS[u.cat].name+' · قاطع تلاجة'}); });
+    } else {
+      codes.push({code:u.code, sub:u.zone+' · '+CATS[u.cat].name+' · '+TYPES[u.type].name});
+    }
+  });
+  return codes;
+}
+function openPrintLabels(){
+  var page = document.getElementById('print-page');
+  if(typeof qrcode === 'undefined'){
+    showToast('تعذر تحميل مكتبة توليد QR (تحتاج اتصال إنترنت)');
+    return;
+  }
+  var codes = collectPrintableCodes();
+  var labelsHtml = codes.map(function(item){
+    var qr = qrcode(0, 'M');
+    qr.addData(item.code);
+    qr.make();
+    var imgTag = qr.createImgTag(4, 4);
+    return '<div class="print-label">'+imgTag+'<div class="code">'+item.code+'</div><div class="sub">'+item.sub+'</div></div>';
+  }).join('');
+  page.innerHTML = labelsHtml;
+  window.print();
+}
+
+
+const TABLE_COLS = [
+  {key:"code", label:"الكود"},
+  {key:"zone", label:"المنطقة"},
+  {key:"type", label:"النوع"},
+  {key:"cat", label:"التصنيف"},
+  {key:"width", label:"المساحة (م)"},
+  {key:"cabinets", label:"القواطع"},
+  {key:"vendors", label:"عدد الموردين"},
+  {key:"occ", label:"نسبة الإشغال"},
+  {key:"turnover", label:"متوسط الدوران"},
+  {key:"status", label:"الحالة"},
+];
+var STATUS_SORT = {good:3, mid:2, weak:1};
+
+function tableRowValue(u, key){
+  switch(key){
+    case "code": return u.code;
+    case "zone": return u.zone;
+    case "type": return TYPES[u.type].name;
+    case "cat": return CATS[u.cat].name;
+    case "width": return unitWidth(u);
+    case "cabinets": return cabinetCount(u);
+    case "vendors": return vendorCountOf(u);
+    case "occ": return occPctOf(u);
+    case "turnover": return avgTurnoverOf(u);
+    case "status": return STATUS_SORT[statusOf(avgTurnoverOf(u))];
+    default: return "";
+  }
+}
+
+function sortTableBy(key){
+  if(tableSort.key===key){ tableSort.dir = -tableSort.dir; }
+  else { tableSort = {key:key, dir:1}; }
+  renderTable();
+}
+
+function renderTable(){
+  var section = document.getElementById('floor');
+  var list = UNITS.filter(unitMatchesFilter);
+  var sorted = list.slice().sort(function(a,b){
+    var av=tableRowValue(a, tableSort.key), bv=tableRowValue(b, tableSort.key);
+    if(typeof av==="string") return tableSort.dir * av.localeCompare(bv, 'ar');
+    return tableSort.dir * (av-bv);
+  });
+
+  var theadHtml = '<tr>' + TABLE_COLS.map(function(c){
+    var isSorted = tableSort.key===c.key;
+    var arrow = isSorted ? (tableSort.dir===1?'▲':'▼') : '▵';
+    return '<th class="'+(isSorted?'sorted':'')+'" onclick="sortTableBy(\''+c.key+'\')">'+c.label+' <span class="arrow">'+arrow+'</span></th>';
+  }).join('') + '</tr>';
+
+  var rowsHtml = sorted.map(function(u){
+    var occ = occPctOf(u), turn = avgTurnoverOf(u), st = statusOf(turn);
+    var cabinets = cabinetCount(u);
+    return '<tr onclick="openDrawer(\''+u.code+'\')">'+
+      '<td class="mono">'+u.code+'</td>'+
+      '<td>'+u.zone+'</td>'+
+      '<td>'+TYPES[u.type].icon+' '+TYPES[u.type].name+'</td>'+
+      '<td>'+CATS[u.cat].name+'</td>'+
+      '<td class="mono">'+unitWidth(u)+'</td>'+
+      '<td class="mono">'+(cabinets>0?cabinets:'—')+'</td>'+
+      '<td class="mono">'+vendorCountOf(u)+'</td>'+
+      '<td class="mono">'+occ+'%</td>'+
+      '<td class="mono">'+turn+'</td>'+
+      '<td><span class="status-badge" style="background:'+STATUS_COLOR[st]+'">'+STATUS_LABEL[st]+'</span></td>'+
+      '</tr>';
+  }).join('');
+
+  section.innerHTML =
+    '<div class="table-toolbar"><span class="hint">'+sorted.length+' وحدة من إجمالي '+UNITS.length+' — اضغط على أي صف لعرض التفاصيل</span>'+
+    '<button class="export-btn" onclick="exportCSV()">تصدير CSV (Excel)</button></div>'+
+    '<div class="table-wrap"><table class="data-table"><thead>'+theadHtml+'</thead><tbody>'+rowsHtml+'</tbody></table></div>';
+}
+
+function exportCSV(){
+  var header = TABLE_COLS.map(function(c){return c.label;});
+  var rows = UNITS.map(function(u){
+    var turn = avgTurnoverOf(u), st = statusOf(turn);
+    return [
+      u.code, u.zone, TYPES[u.type].name, CATS[u.cat].name, unitWidth(u),
+      cabinetCount(u)>0?cabinetCount(u):'', vendorCountOf(u), occPctOf(u)+'%', turn, STATUS_LABEL[st]
+    ];
+  });
+  var csv = [header].concat(rows).map(function(r){
+    return r.map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(',');
+  }).join('\r\n');
+  var blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'تقرير_مساحات_المركز.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+var turnoverMode = 'qty'; // 'qty' | 'value'
+function setTurnoverMode(m){ turnoverMode = m; renderVendorsTable(); }
+
+function computeVendorStats(){
+  var visibleUnits = UNITS.filter(unitMatchesFilter);
+  var totalFilteredSpace = 0;
+  var vacantSpace = 0, vacantCount = 0;
+  var byVendor = {};
+  visibleUnits.forEach(function(u){
+    allSegsWithMeta(u).forEach(function(s){
+      totalFilteredSpace += s.allocatedLen;
+      if(s.vacant){ vacantSpace += s.allocatedLen; vacantCount++; return; }
+      if(!byVendor[s.vendor]){
+        byVendor[s.vendor] = {vendor:s.vendor, count:0, space:0, turnW:0, turnValW:0, salesQty:0, salesValue:0, purchasesValue:0};
+      }
+      var v = byVendor[s.vendor];
+      v.count++;
+      v.space += s.allocatedLen;
+      v.turnW += s.turnover * s.allocatedLen;
+      v.turnValW += s.turnoverValue * s.allocatedLen;
+      v.salesQty += s.salesQty;
+      v.salesValue += s.salesValue;
+      v.purchasesValue += s.purchasesValue;
+    });
+  });
+  var list = Object.keys(byVendor).map(function(k){
+    var v = byVendor[k];
+    return {
+      vendor:v.vendor, count:v.count,
+      space: +v.space.toFixed(2),
+      pctOfTotal: totalFilteredSpace>0 ? +(v.space/totalFilteredSpace*100).toFixed(1) : 0,
+      turnoverQty: v.space>0 ? +(v.turnW/v.space).toFixed(2) : 0,
+      turnoverValue: v.space>0 ? +(v.turnValW/v.space).toFixed(2) : 0,
+      salesQty: v.salesQty, salesValue: +v.salesValue.toFixed(1), purchasesValue: +v.purchasesValue.toFixed(1),
+      isVacant:false
+    };
+  });
+  var vacantRow = null;
+  if(vacantSpace>0){
+    vacantRow = {
+      vendor:'— مساحة شاغرة (غير مؤجرة) —', count:vacantCount,
+      space:+vacantSpace.toFixed(2),
+      pctOfTotal: totalFilteredSpace>0 ? +(vacantSpace/totalFilteredSpace*100).toFixed(1) : 0,
+      turnoverQty:0, turnoverValue:0, salesQty:0, salesValue:0, purchasesValue:0,
+      isVacant:true
+    };
+  }
+  return {list:list, vacantRow:vacantRow, totalFilteredSpace:+totalFilteredSpace.toFixed(2)};
+}
+
+var vendorSort = {key:'space', dir:-1};
+function sortVendorsBy(key){
+  if(vendorSort.key===key){ vendorSort.dir=-vendorSort.dir; } else { vendorSort={key:key, dir:-1}; }
+  renderVendorsTable();
+}
+
+function renderVendorsTable(){
+  var section = document.getElementById('floor');
+  var stats = computeVendorStats();
+  var qtyMode = turnoverMode==='qty';
+
+  var cols = [
+    {key:'vendor', label:'المورد'},
+    {key:'count', label:'عدد المساحات'},
+    {key:'space', label:'إجمالي المساحة (م)'},
+    {key:'pctOfTotal', label:'% من الفلتر الحالي'},
+    {key: qtyMode?'turnoverQty':'turnoverValue', label:'معدل الدوران ('+(qtyMode?'كمية':'قيمة')+')'},
+    {key: qtyMode?'salesQty':'salesValue', label: qtyMode?'الكمية المباعة':'قيمة المبيعات (د.ك)'},
+    {key:'purchasesValue', label:'قيمة المشتريات (د.ك)'}
+  ];
+
+  var sorted = stats.list.slice().sort(function(a,b){
+    var av=a[vendorSort.key], bv=b[vendorSort.key];
+    if(typeof av==='string') return vendorSort.dir*av.localeCompare(bv,'ar');
+    return vendorSort.dir*(av-bv);
+  });
+
+  var theadHtml = '<tr>' + cols.map(function(c){
+    var isSorted = vendorSort.key===c.key;
+    var arrow = isSorted ? (vendorSort.dir===1?'▲':'▼') : '▵';
+    return '<th class="'+(isSorted?'sorted':'')+'" onclick="sortVendorsBy(\''+c.key+'\')">'+c.label+' <span class="arrow">'+arrow+'</span></th>';
+  }).join('') + '</tr>';
+
+  var rowsHtml = sorted.map(function(v){
+    var turn = qtyMode? v.turnoverQty : v.turnoverValue;
+    var st = statusOf(turn);
+    return '<tr>'+
+      '<td>'+v.vendor+'</td>'+
+      '<td class="mono">'+v.count+'</td>'+
+      '<td class="mono">'+v.space+'</td>'+
+      '<td class="mono">'+v.pctOfTotal+'%</td>'+
+      '<td class="mono">'+turn+' <span class="status-badge" style="background:'+STATUS_COLOR[st]+'">'+STATUS_LABEL[st]+'</span></td>'+
+      '<td class="mono">'+(qtyMode? v.salesQty : v.salesValue)+'</td>'+
+      '<td class="mono">'+v.purchasesValue+'</td>'+
+      '</tr>';
+  }).join('');
+
+  if(stats.vacantRow){
+    var vr = stats.vacantRow;
+    rowsHtml += '<tr class="vacant-row">'+
+      '<td>'+vr.vendor+'</td>'+
+      '<td class="mono">'+vr.count+'</td>'+
+      '<td class="mono">'+vr.space+'</td>'+
+      '<td class="mono">'+vr.pctOfTotal+'%</td>'+
+      '<td class="mono">—</td>'+
+      '<td class="mono">—</td>'+
+      '<td class="mono">—</td>'+
+      '</tr>';
+  }
+  var occupiedPct = stats.vacantRow ? +(100 - stats.vacantRow.pctOfTotal).toFixed(1) : 100;
+
+  var activeCat = filters.category ? CATS[filters.category].name : 'كل التصنيفات';
+  section.innerHTML =
+    '<div class="vendors-toolbar">'+
+      '<span class="hint">عرض '+sorted.length+' مورد ضمن: <strong>'+activeCat+'</strong> — إجمالي مساحة الفلتر الحالي: '+stats.totalFilteredSpace+' م — نسبة الإشغال الفعلي: <strong>'+occupiedPct+'%</strong>'+(stats.vacantRow?' (شاغر: '+stats.vacantRow.pctOfTotal+'%)':'')+'</span>'+
+      '<div style="display:flex;gap:10px;align-items:center;">'+
+        '<div class="metric-toggle"><button class="'+(qtyMode?'active':'')+'" onclick="setTurnoverMode(\'qty\')">حسب الكمية</button><button class="'+(!qtyMode?'active':'')+'" onclick="setTurnoverMode(\'value\')">حسب القيمة</button></div>'+
+        '<button class="export-btn" onclick="exportVendorsCSV()">تصدير CSV</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="table-wrap"><table class="data-table"><thead>'+theadHtml+'</thead><tbody>'+rowsHtml+'</tbody></table></div>'+
+    '<div style="padding:0 28px 20px;"><p class="hint-text">استخدم فلتر "التصنيف" في الشريط الجانبي لعرض نسب استغلال الموردين داخل تصنيف معين فقط (مثال: اختر "مجمدات" ليظهر توزيع الموردين ونسبهم داخل هذا التصنيف تحديدًا). صف "مساحة شاغرة" أسفل الجدول يوضح الجزء غير المؤجر من نفس الفلتر — مجموع كل النسب دائمًا 100%. القيم المالية تقديرية ما لم تكن متصلاً ببيانات حية من جوجل شيت.</p></div>';
+}
+
+function exportVendorsCSV(){
+  var stats = computeVendorStats();
+  var qtyMode = turnoverMode==='qty';
+  var header = ['المورد','عدد المساحات','إجمالي المساحة (م)','% من الفلتر الحالي','معدل الدوران ('+(qtyMode?'كمية':'قيمة')+')', qtyMode?'الكمية المباعة':'قيمة المبيعات', 'قيمة المشتريات'];
+  var rows = stats.list.map(function(v){
+    return [v.vendor, v.count, v.space, v.pctOfTotal+'%', qtyMode?v.turnoverQty:v.turnoverValue, qtyMode?v.salesQty:v.salesValue, v.purchasesValue];
+  });
+  if(stats.vacantRow){
+    var vr = stats.vacantRow;
+    rows.push([vr.vendor, vr.count, vr.space, vr.pctOfTotal+'%', '—', '—', '—']);
+  }
+  var csv = [header].concat(rows).map(function(r){
+    return r.map(function(x){ return '"'+String(x).replace(/"/g,'""')+'"'; }).join(',');
+  }).join('\r\n');
+  var blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'تقرير_الموردين.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function render(){
+  renderKPIs();
+  renderEquipmentBar();
+  if(currentDisplay==='cards') renderFloor();
+  else if(currentDisplay==='treemap') renderTreemap();
+  else if(currentDisplay==='vendors') renderVendorsTable();
+  else renderTable();
+}
+// بدل init() المباشر — يستدعى عند فتح المول ماب لأول مرة
+window.__initMallMap = function(){
+  if(window.__mallMapInitialized) return;
+  window.__mallMapInitialized = true;
+  init();
+};
+
+</script>
 </body>
 </html>
